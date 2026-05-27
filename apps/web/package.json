@@ -1,0 +1,37 @@
+{
+  "name": "@aip/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Operator + reviewer dashboard. Nuxt 3 shell in this PR; live map, alert feed, incident timeline, reviewer queue all attach in Phase 2 / Phase 4.",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint . --ext .ts",
+    "typecheck": "nuxt typecheck",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview"
+  },
+  "dependencies": {
+    "@aip/shared-contracts": "workspace:*",
+    "@pinia/nuxt": "^0.7.0",
+    "nuxt": "^3.13.2",
+    "pinia": "^2.2.4",
+    "vue": "^3.5.12",
+    "vue-router": "^4.4.5"
+  },
+  "devDependencies": {
+    "@nuxtjs/tailwindcss": "^6.12.2",
+    "@types/node": "^22.7.5",
+    "@vitejs/plugin-vue": "^5.1.4",
+    "@vue/test-utils": "^2.4.6",
+    "happy-dom": "^15.7.4",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2",
+    "vue-eslint-parser": "^9.4.3",
+    "vue-tsc": "^2.1.10"
+  }
+}

@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Always dark — UX role doc explicitly forbids a bright theme. */
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    font-feature-settings: "tnum" 1;
+  }
+
+  /* Default focus ring uses the accent so keyboard users see a clear target. */
+  :focus-visible {
+    outline: 2px solid theme("colors.aip.accent");
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .aip-panel {
+    @apply rounded-md border border-aip-border bg-aip-panel;
+  }
+
+  .aip-card {
+    @apply rounded-md border border-aip-border bg-aip-elevated p-4;
+  }
+}

@@ -304,6 +304,28 @@ services:
     networks:
       - aip-net
 
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+    container_name: aip-web
+    restart: unless-stopped
+    environment:
+      NITRO_PORT: 3000
+      NITRO_HOST: 0.0.0.0
+      NUXT_PUBLIC_API_BASE_URL: /api/v1
+      NUXT_PUBLIC_WS_BASE_URL: /ws/v1
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - aip-net
+
   nginx:
     build:
       context: ./infrastructure/docker/nginx
