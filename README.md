@@ -1,5 +1,8 @@
 # Airport Inspection Platform
 
+[![CI](https://github.com/joseph-caughey-labs/airport-inspection-platform/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/joseph-caughey-labs/airport-inspection-platform/actions/workflows/ci.yml)
+[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20NC%201.0.0-blue.svg)](LICENSE)
+
 A production-style demonstration of an AI-assisted airport inspection platform: real-time sensor ingestion, computer-vision event detection, 10-layer validation, and an operations dashboard.
 
 ## Status
