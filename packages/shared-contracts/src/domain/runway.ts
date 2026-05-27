@@ -28,9 +28,7 @@ export const Runway = z.object({
   id: z.string().uuid(),
   airport_id: z.string().uuid(),
   designator: RunwayDesignator,
-  paired_designator: RunwayDesignator.describe(
-    "Opposite-direction designator (e.g. 09L ↔ 27R)",
-  ),
+  paired_designator: RunwayDesignator.describe("Opposite-direction designator (e.g. 09L ↔ 27R)"),
   length_m: z.number().positive(),
   width_m: z.number().positive(),
   surface: RunwaySurface,

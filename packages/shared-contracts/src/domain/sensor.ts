@@ -23,10 +23,7 @@ export type SensorStatus = z.infer<typeof SensorStatus>;
  */
 export const SensorId = z
   .string()
-  .regex(
-    /^[A-Z]{2,4}-[A-Z0-9]+-\d{2,3}$/,
-    "Sensor id must be TYPE-LOCATION-INDEX (uppercase)",
-  );
+  .regex(/^[A-Z]{2,4}-[A-Z0-9]+-\d{2,3}$/, "Sensor id must be TYPE-LOCATION-INDEX (uppercase)");
 export type SensorId = z.infer<typeof SensorId>;
 
 export const Sensor = z.object({

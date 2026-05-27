@@ -1,5 +1,8 @@
 # Airport Inspection Platform
 
+[![CI](https://github.com/joseph-caughey-labs/airport-inspection-platform/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/joseph-caughey-labs/airport-inspection-platform/actions/workflows/ci.yml)
+[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20NC%201.0.0-blue.svg)](LICENSE)
+
 A production-style demonstration of an AI-assisted airport inspection platform: real-time sensor ingestion, computer-vision event detection, 10-layer validation, and an operations dashboard.
 
 ## Status
@@ -30,15 +33,15 @@ docker compose up       # full stack (Phase 1 brings up the skeleton; Phase 2+ a
 
 ## Workspace Layout
 
-| Folder | Purpose |
-|---|---|
-| [`apps/`](apps/) | Frontend applications (Nuxt 3 operator + reviewer dashboard) |
-| [`services/`](services/) | Backend microservices (Node/TS + Python AI service) |
-| [`packages/`](packages/) | Shared workspace libraries (contracts, logger, metrics, clients) |
-| [`infrastructure/`](infrastructure/) | Docker Compose, NGINX, DB migrations, env templates, scripts |
-| [`data/`](data/) | Seed data, fixtures, demo scenarios |
-| [`__TEST__/`](__TEST__/) | Centralized test suite (unit, integration, api, frontend, pipeline, e2e, load, security) |
-| [`docs/`](docs/) | ADRs, runbooks, architecture diagrams, demo walkthrough |
+| Folder                               | Purpose                                                                                  |
+| ------------------------------------ | ---------------------------------------------------------------------------------------- |
+| [`apps/`](apps/)                     | Frontend applications (Nuxt 3 operator + reviewer dashboard)                             |
+| [`services/`](services/)             | Backend microservices (Node/TS + Python AI service)                                      |
+| [`packages/`](packages/)             | Shared workspace libraries (contracts, logger, metrics, clients)                         |
+| [`infrastructure/`](infrastructure/) | Docker Compose, NGINX, DB migrations, env templates, scripts                             |
+| [`data/`](data/)                     | Seed data, fixtures, demo scenarios                                                      |
+| [`__TEST__/`](__TEST__/)             | Centralized test suite (unit, integration, api, frontend, pipeline, e2e, load, security) |
+| [`docs/`](docs/)                     | ADRs, runbooks, architecture diagrams, demo walkthrough                                  |
 
 ## Process
 
