@@ -184,6 +184,46 @@ importers:
         specifier: ^2.1.2
         version: 2.1.9(@types/node@22.19.19)
 
+  services/audit-service:
+    dependencies:
+      '@aip/logger':
+        specifier: workspace:*
+        version: link:../../packages/logger
+      '@aip/postgres-client':
+        specifier: workspace:*
+        version: link:../../packages/postgres-client
+      '@aip/redis-client':
+        specifier: workspace:*
+        version: link:../../packages/redis-client
+      '@aip/shared-contracts':
+        specifier: workspace:*
+        version: link:../../packages/shared-contracts
+      fastify:
+        specifier: ^5.0.0
+        version: 5.8.5
+      ioredis:
+        specifier: ^5.4.1
+        version: 5.11.0
+      pg:
+        specifier: ^8.13.0
+        version: 8.21.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.7.5
+        version: 22.19.19
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
+      tsx:
+        specifier: ^4.19.1
+        version: 4.22.3
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.2
+        version: 2.1.9(@types/node@22.19.19)
+
   services/event-pipeline:
     dependencies:
       '@aip/logger':
@@ -210,6 +250,74 @@ importers:
       pg:
         specifier: ^8.13.0
         version: 8.21.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.7.5
+        version: 22.19.19
+      tsx:
+        specifier: ^4.19.1
+        version: 4.22.3
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.2
+        version: 2.1.9(@types/node@22.19.19)
+
+  services/incident-service:
+    dependencies:
+      '@aip/db-schema':
+        specifier: workspace:*
+        version: link:../../packages/db-schema
+      '@aip/logger':
+        specifier: workspace:*
+        version: link:../../packages/logger
+      '@aip/postgres-client':
+        specifier: workspace:*
+        version: link:../../packages/postgres-client
+      '@aip/shared-contracts':
+        specifier: workspace:*
+        version: link:../../packages/shared-contracts
+      fastify:
+        specifier: ^5.0.0
+        version: 5.8.5
+      pg:
+        specifier: ^8.13.0
+        version: 8.21.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.7.5
+        version: 22.19.19
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
+      tsx:
+        specifier: ^4.19.1
+        version: 4.22.3
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.2
+        version: 2.1.9(@types/node@22.19.19)
+
+  services/notification-service:
+    dependencies:
+      '@aip/logger':
+        specifier: workspace:*
+        version: link:../../packages/logger
+      '@aip/redis-client':
+        specifier: workspace:*
+        version: link:../../packages/redis-client
+      '@aip/shared-contracts':
+        specifier: workspace:*
+        version: link:../../packages/shared-contracts
+      fastify:
+        specifier: ^5.0.0
+        version: 5.8.5
+      ioredis:
+        specifier: ^5.4.1
+        version: 5.11.0
     devDependencies:
       '@types/node':
         specifier: ^22.7.5

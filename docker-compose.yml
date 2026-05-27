@@ -146,6 +146,91 @@ services:
     networks:
       - aip-net
 
+  incident-service:
+    build:
+      context: .
+      dockerfile: ./services/incident-service/Dockerfile
+    container_name: aip-incident-service
+    restart: unless-stopped
+    environment:
+      PORT: 3006
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-airport_ops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-dev}
+      POSTGRES_DB: ${POSTGRES_DB:-airport_inspection}
+    ports:
+      - "3006:3006"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3006/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - aip-net
+
+  audit-service:
+    build:
+      context: .
+      dockerfile: ./services/audit-service/Dockerfile
+    container_name: aip-audit-service
+    restart: unless-stopped
+    environment:
+      PORT: 3007
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-airport_ops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-dev}
+      POSTGRES_DB: ${POSTGRES_DB:-airport_inspection}
+    ports:
+      - "3007:3007"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3007/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - aip-net
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: ./services/notification-service/Dockerfile
+    container_name: aip-notification-service
+    restart: unless-stopped
+    environment:
+      PORT: 3008
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "3008:3008"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3008/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - aip-net
+
   reference-data:
     build:
       context: .
