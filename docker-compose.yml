@@ -334,6 +334,13 @@ services:
     restart: unless-stopped
     ports:
       - "${NGINX_PORT:-3000}:80"
+    depends_on:
+      web:
+        condition: service_healthy
+      api-gateway:
+        condition: service_healthy
+      ws-broadcaster:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost/health"]
       interval: 10s
