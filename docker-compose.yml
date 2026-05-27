@@ -231,6 +231,31 @@ services:
     networks:
       - aip-net
 
+  ai-inference:
+    build:
+      context: .
+      dockerfile: ./services/ai-inference/Dockerfile
+    container_name: aip-ai-inference
+    restart: unless-stopped
+    environment:
+      PORT: 8000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - aip-net
+
   validation-engine:
     build:
       context: .
