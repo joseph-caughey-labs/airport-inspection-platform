@@ -1,6 +1,6 @@
 # Architecture Decision Records (ADRs)
 
-This folder captures the **why** behind every significant architectural choice in the Airport Inspection Platform. Code answers *what* the system does; ADRs answer *why* it does it that way.
+This folder captures the **why** behind every significant architectural choice in the Airport Inspection Platform. Code answers _what_ the system does; ADRs answer _why_ it does it that way.
 
 ## When to write an ADR
 
@@ -30,19 +30,19 @@ Sequential. Never reuse a number, even for superseded ADRs. Status field handles
 
 ## Index
 
-| # | Title | Status | Owner |
-|---|---|---|---|
-| [0001](0001-redis-pubsub-vs-kafka.md) | Redis pub/sub for demo event transport | Accepted | Principal Architect |
-| [0002](0002-websockets-for-realtime.md) | WebSockets for real-time operator updates | Accepted | Principal Architect |
-| [0003](0003-service-boundary-rationale.md) | Service boundary rationale (10 services + 1 frontend) | Accepted | Principal Architect |
-| 0004 | AI inference simulation strategy | _Draft (T-301)_ | AI/ML Engineer |
-| 0005 | Idempotency and retries | _Draft (T-503)_ | SRE |
-| 0006 | Event ordering and deduplication | _Draft (T-206)_ | Backend |
-| 0007 | Edge / cloud separation | _Pending (Phase 5)_ | Principal Architect |
-| 0008 | Validation engine design | _Draft (T-405)_ | Validation Engineer |
-| 0009 | HITL routing thresholds | _Draft (T-409)_ | Validation Engineer |
-| 0010 | Audit immutability | _Draft (T-412)_ | Database |
-| 0011 | Input validation strategy | _Draft (T-505)_ | Security |
-| 0012 | Branching and release strategy | _Pending_ | Project Manager |
+| #                                          | Title                                                 | Status              | Owner               |
+| ------------------------------------------ | ----------------------------------------------------- | ------------------- | ------------------- |
+| [0001](0001-redis-pubsub-vs-kafka.md)      | Redis pub/sub for demo event transport                | Accepted            | Principal Architect |
+| [0002](0002-websockets-for-realtime.md)    | WebSockets for real-time operator updates             | Accepted            | Principal Architect |
+| [0003](0003-service-boundary-rationale.md) | Service boundary rationale (10 services + 1 frontend) | Accepted            | Principal Architect |
+| 0004                                       | AI inference simulation strategy                      | _Draft (T-301)_     | AI/ML Engineer      |
+| 0005                                       | Idempotency and retries                               | _Draft (T-503)_     | SRE                 |
+| 0006                                       | Event ordering and deduplication                      | _Draft (T-206)_     | Backend             |
+| 0007                                       | Edge / cloud separation                               | _Pending (Phase 5)_ | Principal Architect |
+| 0008                                       | Validation engine design                              | _Draft (T-405)_     | Validation Engineer |
+| 0009                                       | HITL routing thresholds                               | _Draft (T-409)_     | Validation Engineer |
+| 0010                                       | Audit immutability                                    | _Draft (T-412)_     | Database            |
+| 0011                                       | Input validation strategy                             | _Draft (T-505)_     | Security            |
+| 0012                                       | Branching and release strategy                        | _Pending_           | Project Manager     |
 
 Status values: **Proposed**, **Accepted**, **Superseded by ADR-NNNN**, **Deprecated**.

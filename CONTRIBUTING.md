@@ -18,12 +18,12 @@ This document is the **short reference**. The authoritative process doc lives in
 
 ## Branches
 
-| Branch | From | To | Merge |
-|---|---|---|---|
-| `feature/<scope>` | `develop` | `develop` | squash |
-| `bugfix/<issue>` | `develop` | `develop` | squash |
-| `release/v0.X.0` | `develop` | `main` + back-merge `develop` | merge commit |
-| `hotfix/<issue>` | `main` | `main` + back-merge `develop` | merge commit |
+| Branch            | From      | To                            | Merge        |
+| ----------------- | --------- | ----------------------------- | ------------ |
+| `feature/<scope>` | `develop` | `develop`                     | squash       |
+| `bugfix/<issue>`  | `develop` | `develop`                     | squash       |
+| `release/v0.X.0`  | `develop` | `main` + back-merge `develop` | merge commit |
+| `hotfix/<issue>`  | `main`    | `main` + back-merge `develop` | merge commit |
 
 ### Naming
 
@@ -102,12 +102,12 @@ gh pr create --base develop --head release/v0.X.0 --title "chore: back-merge v0.
 
 ### Phase-to-version map
 
-| Phase | Tag |
-|---|---|
-| Phase 1 — Skeleton | `v0.1.0` |
-| Phase 2 — Real-Time | `v0.2.0` |
-| Phase 3 — AI Pipeline | `v0.3.0` |
-| Phase 4 — Incidents | `v0.4.0` |
+| Phase                      | Tag      |
+| -------------------------- | -------- |
+| Phase 1 — Skeleton         | `v0.1.0` |
+| Phase 2 — Real-Time        | `v0.2.0` |
+| Phase 3 — AI Pipeline      | `v0.3.0` |
+| Phase 4 — Incidents        | `v0.4.0` |
 | Phase 5 — Hardening + Demo | `v1.0.0` |
 
 ---

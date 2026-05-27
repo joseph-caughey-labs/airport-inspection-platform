@@ -33,15 +33,15 @@ docker compose up       # full stack (Phase 1 brings up the skeleton; Phase 2+ a
 
 ## Workspace Layout
 
-| Folder | Purpose |
-|---|---|
-| [`apps/`](apps/) | Frontend applications (Nuxt 3 operator + reviewer dashboard) |
-| [`services/`](services/) | Backend microservices (Node/TS + Python AI service) |
-| [`packages/`](packages/) | Shared workspace libraries (contracts, logger, metrics, clients) |
-| [`infrastructure/`](infrastructure/) | Docker Compose, NGINX, DB migrations, env templates, scripts |
-| [`data/`](data/) | Seed data, fixtures, demo scenarios |
-| [`__TEST__/`](__TEST__/) | Centralized test suite (unit, integration, api, frontend, pipeline, e2e, load, security) |
-| [`docs/`](docs/) | ADRs, runbooks, architecture diagrams, demo walkthrough |
+| Folder                               | Purpose                                                                                  |
+| ------------------------------------ | ---------------------------------------------------------------------------------------- |
+| [`apps/`](apps/)                     | Frontend applications (Nuxt 3 operator + reviewer dashboard)                             |
+| [`services/`](services/)             | Backend microservices (Node/TS + Python AI service)                                      |
+| [`packages/`](packages/)             | Shared workspace libraries (contracts, logger, metrics, clients)                         |
+| [`infrastructure/`](infrastructure/) | Docker Compose, NGINX, DB migrations, env templates, scripts                             |
+| [`data/`](data/)                     | Seed data, fixtures, demo scenarios                                                      |
+| [`__TEST__/`](__TEST__/)             | Centralized test suite (unit, integration, api, frontend, pipeline, e2e, load, security) |
+| [`docs/`](docs/)                     | ADRs, runbooks, architecture diagrams, demo walkthrough                                  |
 
 ## Process
 

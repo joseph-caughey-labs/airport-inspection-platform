@@ -6,15 +6,15 @@ Cross-service contracts for the Airport Inspection Platform. Every domain entity
 
 ## Subpath exports
 
-| Import path | What's there |
-|---|---|
-| `@aip/shared-contracts` | Everything (barrel) |
-| `@aip/shared-contracts/enums` | `Severity`, `IncidentStatus`, `SensorType`, `Role`, `DetectionClass` |
-| `@aip/shared-contracts/domain` | `Airport`, `Runway`, `Sensor`, `GeoPoint`, `User` |
-| `@aip/shared-contracts/events` | `EventEnvelope` (base for all internal events) |
-| `@aip/shared-contracts/api` | `ErrorResponse`, `PaginationQuery`, `PaginatedResponse` |
-| `@aip/shared-contracts/ws` | `WsMessage` envelope |
-| `@aip/shared-contracts/errors` | Canonical `ErrorCode` constants |
+| Import path                    | What's there                                                         |
+| ------------------------------ | -------------------------------------------------------------------- |
+| `@aip/shared-contracts`        | Everything (barrel)                                                  |
+| `@aip/shared-contracts/enums`  | `Severity`, `IncidentStatus`, `SensorType`, `Role`, `DetectionClass` |
+| `@aip/shared-contracts/domain` | `Airport`, `Runway`, `Sensor`, `GeoPoint`, `User`                    |
+| `@aip/shared-contracts/events` | `EventEnvelope` (base for all internal events)                       |
+| `@aip/shared-contracts/api`    | `ErrorResponse`, `PaginationQuery`, `PaginatedResponse`              |
+| `@aip/shared-contracts/ws`     | `WsMessage` envelope                                                 |
+| `@aip/shared-contracts/errors` | Canonical `ErrorCode` constants                                      |
 
 ## Pattern
 
