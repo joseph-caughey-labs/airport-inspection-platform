@@ -1,0 +1,27 @@
+{
+  "name": "@aip/http-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Service-to-service HTTP client — Node's native fetch with timeouts, exponential-backoff retries on retryable failures, a configurable circuit breaker, and sanitized errors.",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2"
+  }
+}
