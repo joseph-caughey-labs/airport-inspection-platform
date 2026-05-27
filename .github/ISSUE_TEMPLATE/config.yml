@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Process & branching conventions
+    url: https://github.com/joseph-caughey-labs/airport-inspection-platform/blob/develop/CONTRIBUTING.md
+    about: Read the Git Flow process, branch naming, commit conventions, and PR expectations before opening an issue.
