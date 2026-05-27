@@ -1,0 +1,30 @@
+{
+  "name": "@aip/notification-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Notification fanout — in-app, webhook, email-stub. This PR adds the shell; real channel implementations land in T-413.",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "type": "module",
+  "main": "./src/main.ts",
+  "scripts": {
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@aip/logger": "workspace:*",
+    "@aip/redis-client": "workspace:*",
+    "@aip/shared-contracts": "workspace:*",
+    "fastify": "^5.0.0",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2"
+  }
+}
