@@ -1,0 +1,30 @@
+{
+  "name": "@aip/metrics",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prometheus metrics for every Node/TS service. prom-client under the hood, with opinionated factories for RED (request/error/duration) and queue (depth/processed/errors) surfaces, and a built-in default-labels convention.",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "prom-client": "^15.1.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2"
+  }
+}
