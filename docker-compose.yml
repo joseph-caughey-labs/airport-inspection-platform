@@ -44,6 +44,26 @@ services:
     networks:
       - aip-net
 
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./services/api-gateway/Dockerfile
+    container_name: aip-api-gateway
+    restart: unless-stopped
+    environment:
+      PORT: 3001
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3001/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - aip-net
+
   reference-data:
     build:
       context: .
