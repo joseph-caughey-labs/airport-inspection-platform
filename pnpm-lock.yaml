@@ -153,6 +153,37 @@ importers:
         specifier: ^2.1.2
         version: 2.1.9(@types/node@22.19.19)
 
+  services/api-gateway:
+    dependencies:
+      '@aip/logger':
+        specifier: workspace:*
+        version: link:../../packages/logger
+      '@aip/metrics':
+        specifier: workspace:*
+        version: link:../../packages/metrics
+      '@aip/shared-contracts':
+        specifier: workspace:*
+        version: link:../../packages/shared-contracts
+      fastify:
+        specifier: ^5.0.0
+        version: 5.8.5
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.7.5
+        version: 22.19.19
+      tsx:
+        specifier: ^4.19.1
+        version: 4.22.3
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.2
+        version: 2.1.9(@types/node@22.19.19)
+
   services/reference-data:
     dependencies:
       '@aip/db-schema':
