@@ -41,7 +41,7 @@ Sequential. Never reuse a number, even for superseded ADRs. Status field handles
 | 0007                                       | Edge / cloud separation                               | _Pending (Phase 5)_ | Principal Architect |
 | 0008                                       | Validation engine design                              | _Draft (T-405)_     | Validation Engineer |
 | 0009                                       | HITL routing thresholds                               | _Draft (T-409)_     | Validation Engineer |
-| 0010                                       | Audit immutability                                    | _Draft (T-412)_     | Database            |
+| [0010](0010-audit-immutability.md)         | Audit immutability                                    | Accepted            | Database            |
 | 0011                                       | Input validation strategy                             | _Draft (T-505)_     | Security            |
 | 0012                                       | Branching and release strategy                        | _Pending_           | Project Manager     |
 
