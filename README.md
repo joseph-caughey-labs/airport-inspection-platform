@@ -48,4 +48,6 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the short-form process reference. A
 
 ## License
 
-Phase 1 will add `LICENSE`, `NOTICE.md`, and `TERMS_OF_USE.md`. Until then, this repository is **not** licensed for redistribution or commercial use — it is provided for portfolio evaluation only.
+Licensed under [PolyForm Noncommercial 1.0.0](LICENSE) — code review, evaluation, and noncommercial use are permitted; commercial use and redistribution are not. See [`NOTICE.md`](NOTICE.md) and [`TERMS_OF_USE.md`](TERMS_OF_USE.md) for the full position.
+
+This is a portfolio and demonstration project — not a deployed product, not certified for any operational use.
