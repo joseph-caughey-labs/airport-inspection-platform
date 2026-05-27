@@ -1,0 +1,39 @@
+{
+  "name": "@aip/db-schema",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PostgreSQL schema and migration tooling — Drizzle ORM definitions for the platform's core entities, hand-authored initial SQL migration, and a programmatic runMigrations() entrypoint.",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./schema": {
+      "types": "./src/schema/index.ts",
+      "default": "./src/schema/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "db:migrate": "tsx src/cli/migrate.ts"
+  },
+  "dependencies": {
+    "@aip/postgres-client": "workspace:*",
+    "drizzle-orm": "^0.36.1",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2"
+  }
+}
