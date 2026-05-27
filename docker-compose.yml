@@ -1,0 +1,73 @@
+name: airport-inspection-platform
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aip-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-airport_ops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-dev}
+      POSTGRES_DB: ${POSTGRES_DB:-airport_inspection}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/docker/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-airport_ops} -d ${POSTGRES_DB:-airport_inspection}
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - aip-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: aip-redis
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+      - ./infrastructure/docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - aip-net
+
+  nginx:
+    build:
+      context: ./infrastructure/docker/nginx
+      dockerfile: Dockerfile
+    container_name: aip-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-3000}:80"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - aip-net
+
+volumes:
+  postgres_data:
+    name: aip-postgres-data
+  redis_data:
+    name: aip-redis-data
+
+networks:
+  aip-net:
+    name: aip-net
+    driver: bridge
