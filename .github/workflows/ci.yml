@@ -30,7 +30,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: pnpm
+          # cache: pnpm — re-enable once pnpm-lock.yaml lands with T-103 / Issue #4
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
