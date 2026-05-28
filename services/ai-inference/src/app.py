@@ -21,15 +21,22 @@ from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 from prometheus_client.metrics_core import GaugeMetricFamily
 
-from .detectors import DetectorRegistry, FodDetector
+from .detectors import CrackDetector, DetectorRegistry, FodDetector
 from .pipeline import AiRuntime, RuntimeConfig
 from .redis_client import check_health, create_redis
 
 
 def _default_registry(cfg: RuntimeConfig) -> DetectorRegistry:
-    """Production detector registry. Each T-30x ticket adds one head."""
+    """Production detector registry. Each T-30x ticket adds one head.
+
+    Seeds are offset per detector so two heads constructed from the
+    same `cfg.seed` don't draw identical RNG sequences. The offset
+    is a stable per-detector constant — same `cfg.seed` reproduces
+    the same per-detector seed every run.
+    """
     reg = DetectorRegistry()
     reg.register(FodDetector(seed=cfg.seed))
+    reg.register(CrackDetector(seed=cfg.seed + 1))
     return reg
 
 
