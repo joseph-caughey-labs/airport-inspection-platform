@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Response
@@ -21,9 +22,26 @@ from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 from prometheus_client.metrics_core import GaugeMetricFamily
 
-from .detectors import CrackDetector, DetectorRegistry, FodDetector
+from .detectors import (
+    CrackDetector,
+    DetectorRegistry,
+    FodDetector,
+    SnowbankDetector,
+    load_snowbank_thresholds,
+)
 from .pipeline import AiRuntime, RuntimeConfig
 from .redis_client import check_health, create_redis
+
+# Repo-root-relative path to the SOP baseline. In docker the file is
+# copied into the image at build time; locally it's read straight from
+# the workspace.
+_SOP_BASELINE_PATH = (
+    Path(__file__).resolve().parent.parent.parent.parent
+    / "data"
+    / "seed"
+    / "reference"
+    / "sop-baseline.json"
+)
 
 
 def _default_registry(cfg: RuntimeConfig) -> DetectorRegistry:
@@ -37,6 +55,12 @@ def _default_registry(cfg: RuntimeConfig) -> DetectorRegistry:
     reg = DetectorRegistry()
     reg.register(FodDetector(seed=cfg.seed))
     reg.register(CrackDetector(seed=cfg.seed + 1))
+    reg.register(
+        SnowbankDetector(
+            seed=cfg.seed + 2,
+            thresholds=load_snowbank_thresholds(_SOP_BASELINE_PATH),
+        )
+    )
     return reg
 
 
