@@ -1,0 +1,26 @@
+[
+  {
+    "id": "33333333-1111-1111-1111-000000000001",
+    "email": "pat.operator@airport-ops.test",
+    "name": "Pat Operator",
+    "role": "operator",
+    "organization": "SFO Ops",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "33333333-1111-1111-1111-000000000002",
+    "email": "rio.reviewer@airport-ops.test",
+    "name": "Rio Reviewer",
+    "role": "reviewer",
+    "organization": "SFO Ops",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "33333333-1111-1111-1111-000000000003",
+    "email": "alex.admin@airport-ops.test",
+    "name": "Alex Admin",
+    "role": "admin",
+    "organization": "Airport Inspection Platform",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  }
+]

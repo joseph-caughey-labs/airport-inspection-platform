@@ -1,0 +1,34 @@
+{
+  "version": "v1",
+  "snowbank": {
+    "max_height_cm": 240,
+    "runway_setback_min_m": 6,
+    "taxiway_setback_min_m": 3
+  },
+  "fod": {
+    "location_severity": {
+      "runway_active": "critical",
+      "runway_inactive": "high",
+      "taxiway": "medium",
+      "apron": "low"
+    },
+    "min_object_dimension_cm": 2
+  },
+  "crack": {
+    "severity_bands_mm": {
+      "low": 6,
+      "medium": 12,
+      "high": 25,
+      "critical": 50
+    },
+    "alligator_density_threshold_pct": 30
+  },
+  "wildlife": {
+    "high_risk_classes": ["deer", "coyote", "large_bird"],
+    "alert_within_runway_buffer_m": 200
+  },
+  "weather": {
+    "low_visibility_threshold_m": 800,
+    "confidence_degradation_threshold_m": 1200
+  }
+}

@@ -1,0 +1,46 @@
+[
+  {
+    "id": "22222222-1111-1111-1111-aaaaaaaa0001",
+    "airport_id": "11111111-1111-1111-1111-aaaaaaaaaaaa",
+    "designator": "10L",
+    "paired_designator": "28R",
+    "length_m": 3618,
+    "width_m": 61,
+    "surface": "asphalt",
+    "status": "open",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "22222222-1111-1111-1111-aaaaaaaa0002",
+    "airport_id": "11111111-1111-1111-1111-aaaaaaaaaaaa",
+    "designator": "10R",
+    "paired_designator": "28L",
+    "length_m": 3231,
+    "width_m": 61,
+    "surface": "asphalt",
+    "status": "open",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "22222222-1111-1111-1111-bbbbbbbb0001",
+    "airport_id": "11111111-1111-1111-1111-bbbbbbbbbbbb",
+    "designator": "04L",
+    "paired_designator": "22R",
+    "length_m": 3460,
+    "width_m": 46,
+    "surface": "asphalt",
+    "status": "open",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "22222222-1111-1111-1111-bbbbbbbb0002",
+    "airport_id": "11111111-1111-1111-1111-bbbbbbbbbbbb",
+    "designator": "04R",
+    "paired_designator": "22L",
+    "length_m": 2560,
+    "width_m": 46,
+    "surface": "concrete",
+    "status": "restricted",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  }
+]

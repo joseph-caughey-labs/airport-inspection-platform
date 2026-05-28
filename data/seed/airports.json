@@ -1,0 +1,22 @@
+[
+  {
+    "id": "11111111-1111-1111-1111-aaaaaaaaaaaa",
+    "icao_code": "KSFO",
+    "iata_code": "SFO",
+    "name": "San Francisco International",
+    "city": "San Francisco",
+    "country": "US",
+    "timezone": "America/Los_Angeles",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "11111111-1111-1111-1111-bbbbbbbbbbbb",
+    "icao_code": "KJFK",
+    "iata_code": "JFK",
+    "name": "John F. Kennedy International",
+    "city": "New York",
+    "country": "US",
+    "timezone": "America/New_York",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  }
+]

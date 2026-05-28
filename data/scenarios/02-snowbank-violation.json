@@ -1,0 +1,41 @@
+{
+  "id": "02-snowbank-violation",
+  "title": "Snowbank compliance violation near taxiway",
+  "description": "LiDAR + camera fusion detects a snowbank exceeding the SOP height limit (240 cm) within the runway setback (6 m). Maintenance team is notified; runway status flagged as restricted pending clearance.",
+  "airport_icao": "KJFK",
+  "trigger": {
+    "sensor_id": "LDR-RWY04L-01",
+    "frame_id": "f-2026-01-15-10-00-00-001",
+    "detection": {
+      "class": "snowbank_violation",
+      "confidence": 0.88,
+      "measurements": {
+        "height_cm": 287,
+        "setback_m": 4.2,
+        "length_m": 18
+      },
+      "location": {
+        "runway": "04L",
+        "zone": "edge_n",
+        "lat": 40.6395,
+        "lng": -73.7789
+      }
+    }
+  },
+  "expected": {
+    "severity": "high",
+    "validation": {
+      "certified": true,
+      "hitl_required": false
+    },
+    "incident_status_after_ack": "assigned",
+    "assigned_role": "operator",
+    "audit_events_at_least": [
+      "sensor.frame.captured",
+      "ai.detection.emitted",
+      "validation.layer_04_source_of_truth.passed",
+      "incident.created",
+      "incident.assigned"
+    ]
+  }
+}

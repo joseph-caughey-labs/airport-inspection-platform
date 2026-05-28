@@ -1,0 +1,33 @@
+{
+  "version": "v1",
+  "documents": [
+    {
+      "doc_id": "SOP-FOD-2026-01",
+      "title": "Foreign Object Debris Management Plan",
+      "effective_at": "2026-01-01T00:00:00.000Z",
+      "supersedes": null,
+      "summary": "Detection thresholds, response SLAs, and escalation paths for runway FOD. Mirrors location_severity in sop-baseline."
+    },
+    {
+      "doc_id": "SOP-SNOW-2026-01",
+      "title": "Snow & Ice Control Plan",
+      "effective_at": "2026-01-01T00:00:00.000Z",
+      "supersedes": null,
+      "summary": "Snowbank height + setback rules referenced by Layer 4 source-of-truth validation."
+    },
+    {
+      "doc_id": "SOP-PAVEMENT-2026-01",
+      "title": "Pavement Distress Inspection Procedure",
+      "effective_at": "2026-01-01T00:00:00.000Z",
+      "supersedes": null,
+      "summary": "Crack severity bands and alligator density thresholds for surface anomaly classification."
+    },
+    {
+      "doc_id": "SOP-WILDLIFE-2026-01",
+      "title": "Wildlife Hazard Management Plan",
+      "effective_at": "2026-01-01T00:00:00.000Z",
+      "supersedes": null,
+      "summary": "Species risk classes + runway-buffer alert thresholds."
+    }
+  ]
+}
