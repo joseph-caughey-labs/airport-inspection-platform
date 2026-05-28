@@ -122,7 +122,8 @@ export class RedisBridge {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return JSON.stringify({
       type: eventType,
-      schema_version: typeof parsed["schema_version"] === "string" ? parsed["schema_version"] : "v1",
+      schema_version:
+        typeof parsed["schema_version"] === "string" ? parsed["schema_version"] : "v1",
       timestamp:
         typeof parsed["timestamp"] === "string" ? parsed["timestamp"] : new Date().toISOString(),
       last_event_id: typeof parsed["event_id"] === "string" ? parsed["event_id"] : undefined,
