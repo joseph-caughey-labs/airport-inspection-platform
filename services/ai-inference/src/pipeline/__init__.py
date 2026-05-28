@@ -1,1 +1,12 @@
-"""Batch + streaming inference orchestrator. Real logic lands in T-307."""
+"""Runtime pipeline composition + orchestrator."""
+
+from .config import RuntimeConfig
+from .orchestrator import DetectorOrchestrator, OrchestratorCounters
+from .runtime import AiRuntime
+
+__all__ = [
+    "AiRuntime",
+    "DetectorOrchestrator",
+    "OrchestratorCounters",
+    "RuntimeConfig",
+]

@@ -1,1 +1,5 @@
-"""Detection event publishers. Real publishers attach in T-301."""
+"""Detection event publishers."""
+
+from .detection_publisher import DetectionPublisher, PublisherCounters
+
+__all__ = ["DetectionPublisher", "PublisherCounters"]
