@@ -1,6 +1,11 @@
 import { createLogger } from "@aip/logger";
+import { createRegistry } from "@aip/metrics";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../../../services/event-pipeline/src/app.js";
+
+function makeRegistry() {
+  return createRegistry({ service: "event-pipeline-test", collectDefault: false });
+}
 
 const logger = createLogger({ service: "event-pipeline-test", level: "fatal" });
 
@@ -33,7 +38,12 @@ function unhealthyPool(): import("pg").Pool {
 describe("event-pipeline — health and ready", () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
   beforeAll(async () => {
-    app = await buildApp({ logger, redis: healthyRedis(), pool: healthyPool() });
+    app = await buildApp({
+      logger,
+      redis: healthyRedis(),
+      pool: healthyPool(),
+      registry: makeRegistry(),
+    });
   });
   afterAll(async () => {
     await app.close();
@@ -55,6 +65,7 @@ describe("event-pipeline — health and ready", () => {
       logger,
       redis: unhealthyRedis(),
       pool: healthyPool(),
+      registry: makeRegistry(),
     });
     const res = await downApp.inject({ method: "GET", url: "/ready" });
     expect(res.statusCode).toBe(503);
@@ -67,6 +78,7 @@ describe("event-pipeline — health and ready", () => {
       logger,
       redis: healthyRedis(),
       pool: unhealthyPool(),
+      registry: makeRegistry(),
     });
     const res = await downApp.inject({ method: "GET", url: "/ready" });
     expect(res.statusCode).toBe(503);
