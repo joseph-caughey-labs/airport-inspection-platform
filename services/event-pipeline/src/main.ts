@@ -4,6 +4,7 @@ import { createPgPool } from "@aip/postgres-client";
 import { createRedis } from "@aip/redis-client";
 import { buildApp } from "./app.js";
 import { ConsumerOrchestrator, RedisSubscriber, sensorFramesHandler } from "./consumers/index.js";
+import { DedupStore, withIdempotencyDedup } from "./dedup/index.js";
 
 async function main(): Promise<void> {
   const logger = createLogger({ service: "event-pipeline" });
@@ -37,7 +38,12 @@ async function main(): Promise<void> {
   subscriber.setDispatcher((handler, raw) =>
     orchestrator.dispatch(handler, raw).then(() => undefined),
   );
-  subscriber.register(sensorFramesHandler);
+
+  // ── Dedup middleware ─────────────────────────────────────────────
+  const dedupStore = new DedupStore({
+    windowMs: Number(process.env["DEDUP_WINDOW_MS"] ?? 5_000),
+  });
+  subscriber.register(withIdempotencyDedup(sensorFramesHandler, { store: dedupStore, registry }));
 
   const app = await buildApp({ logger, redis, pool, registry });
   const port = Number(process.env["PORT"] ?? 3004);
