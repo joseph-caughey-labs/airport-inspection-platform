@@ -5,28 +5,30 @@ import { defineConfig } from "vitest/config";
 const here = fileURLToPath(new URL(".", import.meta.url));
 
 /**
- * Frontend test scope is intentionally empty in Phase 1.
+ * Frontend test scope: pure utility helpers only.
  *
- * Why: the brief mandates a centralized `__TEST__/` directory above all
+ * The brief mandates a centralized `__TEST__/` directory above all
  * workspaces, but pnpm's strict isolation prevents test files there
- * from resolving `pinia` / `@vue/test-utils` / etc. (those packages
- * live under `apps/web/node_modules/`, not the workspace root).
+ * from resolving `pinia` / `@vue/test-utils` (those live under
+ * `apps/web/node_modules/`, not the workspace root). Component
+ * coverage lands with **T-214 Playwright e2e**, where the test
+ * runner is a separate process with its own deps.
  *
- * Component coverage lands with **T-214 Playwright e2e**, where the
- * test runner is a separate process with its own deps and the
- * isolation problem doesn't apply. Until then, the operator shell is
- * verified by:
- *  - typecheck (vue-tsc / nuxt typecheck) — catches type errors.
- *  - lint (eslint) — catches obvious bugs.
- *  - manual `pnpm --filter @aip/web dev` smoke during PR review.
+ * What runs here today: pure TypeScript helpers (zod schemas, geo
+ * conversions, seed bundle factory) that don't touch Vue / Pinia /
+ * Nuxt auto-imports. The `zod` alias below points at the apps/web
+ * install so the centralized tests resolve it without depending on
+ * pnpm hoist patterns.
  */
 export default defineConfig({
   resolve: {
-    alias: { "~": here },
+    alias: {
+      "~": here,
+      zod: resolve(here, "node_modules/zod"),
+    },
   },
   test: {
     include: [resolve(here, "../../__TEST__/frontend/**/*.test.ts")],
-    // T-214 brings real coverage; until then the directory is intentionally empty.
     passWithNoTests: true,
   },
 });
