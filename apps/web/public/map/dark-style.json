@@ -1,0 +1,24 @@
+{
+  "version": 8,
+  "name": "AIP Dark Ops",
+  "sources": {
+    "carto-dark": {
+      "type": "raster",
+      "tiles": ["https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png"],
+      "tileSize": 256,
+      "attribution": "© <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> · © <a href=\"https://carto.com/attributions\">CARTO</a>"
+    }
+  },
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": { "background-color": "#0b0f14" }
+    },
+    {
+      "id": "carto-dark",
+      "type": "raster",
+      "source": "carto-dark"
+    }
+  ]
+}
