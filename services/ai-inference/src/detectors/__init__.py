@@ -2,12 +2,13 @@
 
 Each subsequent ticket populates one module under this package:
 
-- T-302: ``fod.py`` — Foreign Object Debris.
+- T-302: ``fod.py`` — Foreign Object Debris ✅
 - T-303: ``crack.py`` — Pavement crack classification.
 - T-304: ``snowbank.py`` — Snowbank compliance.
 - T-305: ``wildlife.py`` + ``anomaly.py``.
 """
 
 from .base import Detector, DetectorRegistry
+from .fod import FodDetector
 
-__all__ = ["Detector", "DetectorRegistry"]
+__all__ = ["Detector", "DetectorRegistry", "FodDetector"]
