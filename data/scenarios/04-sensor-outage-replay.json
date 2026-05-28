@@ -1,0 +1,49 @@
+{
+  "id": "04-sensor-outage-replay",
+  "title": "Sensor offline → reconnect → event replay",
+  "description": "GPS-FLEET-01 transitions to degraded then offline. After reconnect, buffered telemetry replays in chronological order. Operator dashboard shows the offline indicator, then the catch-up burst.",
+  "airport_icao": "KSFO",
+  "trigger": {
+    "sensor_id": "GPS-FLEET-01",
+    "sequence": [
+      {
+        "at_ms": 0,
+        "kind": "sensor.status.changed",
+        "from": "online",
+        "to": "degraded"
+      },
+      {
+        "at_ms": 10000,
+        "kind": "sensor.status.changed",
+        "from": "degraded",
+        "to": "offline"
+      },
+      {
+        "at_ms": 30000,
+        "kind": "sensor.status.changed",
+        "from": "offline",
+        "to": "online"
+      },
+      {
+        "at_ms": 30050,
+        "kind": "sensor.replay.start",
+        "buffered_frames": 12
+      },
+      {
+        "at_ms": 31000,
+        "kind": "sensor.replay.complete"
+      }
+    ]
+  },
+  "expected": {
+    "operator_ui": {
+      "indicators": ["sensor_offline", "replay_in_progress"],
+      "no_data_loss": true
+    },
+    "audit_events_at_least": [
+      "sensor.status.changed",
+      "sensor.replay.start",
+      "sensor.replay.complete"
+    ]
+  }
+}

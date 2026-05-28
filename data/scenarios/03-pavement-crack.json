@@ -1,0 +1,39 @@
+{
+  "id": "03-pavement-crack",
+  "title": "Pavement crack detected during inspection sweep",
+  "description": "Inspection vehicle's camera captures a longitudinal crack on runway 28R at SFO. Severity band derived from width measurement against the SOP table (low ≤ 6 mm, medium ≤ 12 mm, high ≤ 25 mm).",
+  "airport_icao": "KSFO",
+  "trigger": {
+    "sensor_id": "CAM-RWY28R-01",
+    "frame_id": "f-2026-05-27-08-30-00-014",
+    "detection": {
+      "class": "pavement_crack",
+      "confidence": 0.81,
+      "measurements": {
+        "type": "longitudinal",
+        "length_m": 3.2,
+        "max_width_mm": 14
+      },
+      "location": {
+        "runway": "28R",
+        "zone": "midfield",
+        "lat": 37.6234,
+        "lng": -122.3658
+      }
+    }
+  },
+  "expected": {
+    "severity": "high",
+    "validation": {
+      "certified": true,
+      "hitl_required": false
+    },
+    "incident_status_after_ack": "acknowledged",
+    "audit_events_at_least": [
+      "sensor.frame.captured",
+      "ai.detection.emitted",
+      "validation.layer_03_business_rules.passed",
+      "incident.created"
+    ]
+  }
+}

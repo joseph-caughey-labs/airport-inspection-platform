@@ -1,0 +1,33 @@
+{
+  "version": "v1",
+  "assets": [
+    {
+      "asset_id": "VEH-INSPECT-001",
+      "airport_id": "11111111-1111-1111-1111-aaaaaaaaaaaa",
+      "kind": "inspection_vehicle",
+      "callsign": "INSPECT 1",
+      "active": true
+    },
+    {
+      "asset_id": "VEH-DEICE-001",
+      "airport_id": "11111111-1111-1111-1111-aaaaaaaaaaaa",
+      "kind": "deice_truck",
+      "callsign": "DEICE 1",
+      "active": true
+    },
+    {
+      "asset_id": "VEH-PLOW-001",
+      "airport_id": "11111111-1111-1111-1111-bbbbbbbbbbbb",
+      "kind": "plow",
+      "callsign": "PLOW 1",
+      "active": true
+    },
+    {
+      "asset_id": "VEH-INSPECT-002",
+      "airport_id": "11111111-1111-1111-1111-bbbbbbbbbbbb",
+      "kind": "inspection_vehicle",
+      "callsign": "INSPECT 2",
+      "active": true
+    }
+  ]
+}

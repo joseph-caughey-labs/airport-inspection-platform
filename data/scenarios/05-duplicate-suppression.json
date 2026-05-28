@@ -1,0 +1,44 @@
+{
+  "id": "05-duplicate-suppression",
+  "title": "Duplicate detection suppressed by event-pipeline dedup",
+  "description": "Two adjacent cameras emit a FOD detection for the same object on runway 10L within the dedup window. The event pipeline's idempotency layer correlates by geo + time + class and emits one incident with a `duplicate.suppressed` audit event for the second detection.",
+  "airport_icao": "KSFO",
+  "trigger": {
+    "frames": [
+      {
+        "sensor_id": "CAM-RWY10L-01",
+        "frame_id": "f-2026-05-27-15-10-00-001",
+        "at_ms": 0,
+        "detection": {
+          "class": "fod",
+          "confidence": 0.89,
+          "bbox": { "x": 410, "y": 320, "w": 26, "h": 20 },
+          "location": { "runway": "10L", "zone": "touchdown", "lat": 37.6213, "lng": -122.379 }
+        }
+      },
+      {
+        "sensor_id": "LDR-RWY10L-01",
+        "frame_id": "f-2026-05-27-15-10-00-002",
+        "at_ms": 1200,
+        "detection": {
+          "class": "fod",
+          "confidence": 0.86,
+          "bbox": { "x": 178, "y": 224, "w": 30, "h": 24 },
+          "location": { "runway": "10L", "zone": "touchdown", "lat": 37.6214, "lng": -122.3791 }
+        }
+      }
+    ],
+    "dedup_window_ms": 5000
+  },
+  "expected": {
+    "incidents_emitted": 1,
+    "audit_events_at_least": [
+      "sensor.frame.captured",
+      "sensor.frame.captured",
+      "ai.detection.emitted",
+      "ai.detection.emitted",
+      "event.deduplication.suppressed",
+      "incident.created"
+    ]
+  }
+}

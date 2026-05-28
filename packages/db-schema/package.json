@@ -22,7 +22,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run",
-    "db:migrate": "tsx src/cli/migrate.ts"
+    "db:migrate": "tsx src/cli/migrate.ts",
+    "db:seed": "tsx src/cli/seed.ts"
   },
   "dependencies": {
     "@aip/postgres-client": "workspace:*",

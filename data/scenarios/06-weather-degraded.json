@@ -1,0 +1,42 @@
+{
+  "id": "06-weather-degraded",
+  "title": "Weather-degraded visibility downgrades AI confidence",
+  "description": "WX-TOWER-01 reports visibility 700 m (below the 800 m threshold). The AI service applies the weather modifier, dropping detection confidence below the routing threshold. Layer 7 escalates to HITL; reviewer sees a `confidence_degraded` evidence card.",
+  "airport_icao": "KSFO",
+  "trigger": {
+    "weather_frame": {
+      "sensor_id": "WX-TOWER-01",
+      "at_ms": 0,
+      "visibility_m": 700,
+      "ceiling_m": 200
+    },
+    "detection_frame": {
+      "sensor_id": "CAM-RWY10L-01",
+      "at_ms": 2500,
+      "detection": {
+        "class": "surface_anomaly",
+        "raw_confidence": 0.74,
+        "modified_confidence": 0.52,
+        "modifier_reason": "weather.visibility_below_threshold",
+        "bbox": { "x": 220, "y": 340, "w": 60, "h": 18 },
+        "location": { "runway": "10L", "zone": "midfield", "lat": 37.6225, "lng": -122.378 }
+      }
+    }
+  },
+  "expected": {
+    "validation": {
+      "certified": false,
+      "hitl_required": true,
+      "reviewer_evidence_cards": ["confidence_degraded", "weather_context"]
+    },
+    "operator_ui": {
+      "indicators": ["low_confidence", "weather_degraded"]
+    },
+    "audit_events_at_least": [
+      "sensor.frame.captured",
+      "ai.detection.emitted",
+      "validation.layer_07_risk.routed_to_review",
+      "incident.created_with_review_required"
+    ]
+  }
+}
