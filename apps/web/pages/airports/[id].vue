@@ -56,20 +56,27 @@ useHead(() => ({
 
       <SensorLegend :sensors="sensors" />
 
-      <ClientOnly>
-        <AirportMapClient ref="mapRef" :airport="airport" :runways="runways" :sensors="sensors" />
-        <template #fallback>
-          <div
-            class="flex h-[calc(100vh-12rem)] min-h-[480px] items-center justify-center rounded-md border border-aip-border bg-aip-base text-sm text-aip-muted"
-          >
-            Initializing map…
-          </div>
-        </template>
-      </ClientOnly>
+      <div class="grid gap-4 lg:grid-cols-[1fr_minmax(280px,360px)]">
+        <ClientOnly>
+          <AirportMapClient ref="mapRef" :airport="airport" :runways="runways" :sensors="sensors" />
+          <template #fallback>
+            <div
+              class="flex h-[calc(100vh-12rem)] min-h-[480px] items-center justify-center rounded-md border border-aip-border bg-aip-base text-sm text-aip-muted"
+            >
+              Initializing map…
+            </div>
+          </template>
+        </ClientOnly>
+
+        <aside class="flex flex-col gap-4">
+          <SensorHealthPanel :sensors="sensors" />
+          <AlertFeed :airport-id="airportId" />
+        </aside>
+      </div>
 
       <footer class="text-xs text-aip-muted">
-        Live WebSocket fanout attaches in T-213; markers will pulse on each
-        <code class="font-mono">sensor.frame.captured</code> event.
+        Live WebSocket fanout attaches in T-213; markers will pulse and the alert feed will populate
+        on each <code class="font-mono">sensor.frame.captured</code> event.
       </footer>
     </template>
     <div v-else class="aip-card text-sm">
