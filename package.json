@@ -1,6 +1,6 @@
 {
   "name": "airport-inspection-platform",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Airport Inspection Platform — production-style portfolio demo of an AI-assisted airport inspection system (sensor ingestion, AI inference, 10-layer validation, ops dashboard).",
   "license": "SEE LICENSE IN LICENSE",

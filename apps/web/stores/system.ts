@@ -18,7 +18,7 @@ export const useSystemStore = defineStore("system", {
     connection: "connecting",
     role: "operator", // Phase 1 stub — every dev session is "operator" until T-504.
     airportIcao: null,
-    version: "0.1.0",
+    version: "0.2.0",
   }),
   getters: {
     isConnected: (s): boolean => s.connection === "connected",

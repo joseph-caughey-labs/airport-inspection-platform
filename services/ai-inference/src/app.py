@@ -18,7 +18,7 @@ from .redis_client import check_health, create_redis
 
 
 def build_app(redis_client: Any | None = None) -> FastAPI:
-    app = FastAPI(title="ai-inference", version="0.1.0")
+    app = FastAPI(title="ai-inference", version="0.2.0")
     client = redis_client if redis_client is not None else create_redis()
     registry = CollectorRegistry()
 
@@ -31,7 +31,7 @@ def build_app(redis_client: Any | None = None) -> FastAPI:
                 "Static service identification.",
                 labels=["service", "version"],
             )
-            g.add_metric(["ai-inference", os.environ.get("APP_VERSION", "0.1.0")], 1)
+            g.add_metric(["ai-inference", os.environ.get("APP_VERSION", "0.2.0")], 1)
             return [g]
 
     registry.register(_ServiceLabel())  # type: ignore[arg-type]

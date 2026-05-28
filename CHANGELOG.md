@@ -2,6 +2,57 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-05-28
+
+**Phase 2 — Live ingestion + fanout.** Sensor frames flow end-to-end: camera simulator → consumer pipeline → Postgres + outbox → Redis fanout → WebSocket subscribers → live operator dashboard. Reconnect-resume, presence, dedup, and a Playwright e2e harness all included.
+
+### Added
+
+#### Sensor ingestion
+
+- **Camera simulator + simulator runtime** (`services/sensor-gateway`) — produces canonical `sensor.frame.captured` envelopes on Redis with configurable frame rate, geo jitter, and an HTTP control surface for start/stop. 24 unit tests cover envelope shape, scheduling, and shutdown semantics. (#107)
+
+#### Event pipeline (`services/event-pipeline`)
+
+- **Redis consumers + orchestrator + handler model** — `ConsumerOrchestrator` fans envelopes into pluggable handlers with bounded concurrency, dispatch metrics, and a per-handler graceful-stop. Uses ONE labeled metric set (`queue` label) per the prom-client convention (#108).
+- **Idempotency-key dedup middleware** — windowed `DedupStore` collapses redeliveries inside the at-least-once Redis fan-out. Configurable `windowMs` (default 5s). (#109)
+- **Prioritization + watermark + replay queue** — `WatermarkTracker` discriminates late/in-order/out-of-order; `ReplayQueue` defers late events; outside-in middleware chain: dedup → prioritize → persist. (#110)
+- **Persistence + outbox + broadcast publish** — single-TX `INSERT INTO sensor_events` + `INSERT INTO event_outbox`; `OutboxWorker` polls and publishes on `events.broadcast.<airport_id>` at 4 Hz. Includes migration `0002_sensor_events_outbox.sql` (UNIQUE idempotency_key, partial index on unpublished rows). (#111)
+
+#### WebSocket broadcaster (`services/ws-broadcaster`)
+
+- **Per-airport channels + DB hydration + Redis fanout** — pattern-subscribes to `events.broadcast.*`, routes by channel suffix into in-memory `ChannelRegistry`. On-connect hydration replays the freshest N `sensor_events` for the airport so clients paint history before tailing the live feed. `RedisBridge` keeps the pub/sub connection dedicated. (#112)
+- **Presence + `last_event_id` reconnect resume** — `presence.snapshot` sent once on connect, `presence.changed` fanned out on every subscribe/unsubscribe. `FrameHydrator.hydrateSince(airportId, cursor)` finds the watermark row via a CTE and returns frames strictly after, with `resume` / `resume_capped` / `resume_fallback` modes. (#113)
+
+#### Frontend (`apps/web`)
+
+- **Live airfield map (MapLibre)** — dark Carto basemap, runway lines colored by status, sensor markers colored by type and ringed by status, fit-to-airfield camera. Exposes a `pulseSensor()` handle for the WS integration. Seed JSON now carries lat/lng for SFO + JFK and start/end coords for each runway. (#114)
+- **Live alert feed + sensor health panel** — bounded 1000-item store, severity badges encoded by shape (▲ ◆ ■ ● —) + position + color so colorblind operators discriminate the worst events. Sensor health summary (total / online / stale) sorted by last-seen. Empty / loading / error states wired through `feedState`. (#115)
+- **WebSocket integration** — `WsClient` with exponential-backoff reconnect, `last_event_id` resume, `unknown_type` vs `parse_error` decode telemetry. `useAirportLiveStream` orchestrator maps `WsConnectionState` into the global system store and dispatches into the alert + presence stores. Map markers pulse on each `sensor.frame.captured`. (#116)
+
+#### Quality
+
+- **Playwright e2e** (`__TEST__/e2e/`) — fixture-driven scenario 04 (sensor outage) exercises the live ops board through Chromium against the real Nuxt dev server. Smoke tests cover index + airport-page landmark rendering. WS interception via `routeWebSocket` keeps the suite deterministic and dockerless. (#117)
+- **CI e2e workflow** runs in a separate job from unit tests so Playwright's cold-start cost doesn't slow the fast-path PR check. Uploads traces on failure.
+
+### Changed
+
+- **Seed JSON** — `data/seed/airports.json` gains `lat`, `lng`, `default_zoom`; `data/seed/runways.json` gains start/end coords. DB schema unchanged; geo lives only in seed JSON until reference-data lands in Phase 3.
+- **`apps/web/composables/useSeedData.ts`** — fetch runs with `{ server: false }` so it skips SSR (where Nitro's relative-URL `$fetch` resolves to `localhost` without the dev port and 404s).
+
+### Test counts
+
+- `@aip/event-pipeline`: **86 tests** (consumers + dedup + prioritization + persistence + outbox)
+- `@aip/ws-broadcaster`: **40 tests** (registry + hydrator + bridge + presence + resume)
+- `@aip/db-schema`: **29 tests** (0001 + 0002 migrations + schema shape)
+- `@aip/web`: **62 tests** (alerts + map-geo + seed bundle + sensor health + ws-decoder + ws-reconnect + ws-client)
+- Playwright e2e: **5 scenarios** (smoke ×2, fixture-driven feed ×3)
+
+### Known limitations carried into Phase 3
+
+- Fault-injection endpoint (T-204), LiDAR + GPS + IMU + weather simulators (T-202, T-203) — deferred to the Phase 1 backlog.
+- Real-broadcaster "kill + restore + replay" scenario — covered by the WsClient unit tests today; full integration variant lands in T-507.
+
 ## [0.1.0] — 2026-05-27
 
 **Phase 1 — Product Skeleton.** The platform's rails: monorepo, Compose stack, infra packages, shared contracts, schema, ten service shells, frontend shell, NGINX entry point, seed data, and CI.
