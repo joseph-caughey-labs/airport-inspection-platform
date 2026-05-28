@@ -1,31 +1,52 @@
 import { type Logger } from "@aip/logger";
+import { type PgPool } from "@aip/postgres-client";
 import { checkHealth, type RedisClient } from "@aip/redis-client";
 import websocketPlugin from "@fastify/websocket";
 import Fastify from "fastify";
+import { type Registry } from "prom-client";
+import { ChannelRegistry, FrameHydrator } from "./channels/index.js";
+import { registerAirportEventsRoute } from "./routes/airport-events.js";
 
 export interface BuildAppOptions {
   logger: Logger;
   redis: RedisClient;
+  pool: PgPool;
+  registry: Registry;
+  /** Default hydration size (clients may override via ?hydrate=). */
+  hydrationDefaultLimit?: number;
+}
+
+export interface BuiltApp {
+  app: ReturnType<typeof Fastify>;
+  channelRegistry: ChannelRegistry;
 }
 
 /**
- * Shell only. One placeholder WS route (`/ws/v1/ping`) so clients can
- * confirm the upgrade handshake works through NGINX. Real per-airport
- * channels, presence, and the `last_event_id` resume protocol land in
- * T-209/T-210.
+ * Wires the WS service together. The Redis bridge that fans
+ * `events.broadcast.*` into the registry is owned by `main.ts` (it
+ * needs the dedicated subscriber connection) — `buildApp` stops at
+ * the registry boundary so tests can drive dispatch synchronously.
  */
-export async function buildApp({ logger, redis }: BuildAppOptions) {
+export async function buildApp(opts: BuildAppOptions): Promise<BuiltApp> {
   const app = Fastify({
-    logger: { level: logger.level },
+    logger: { level: opts.logger.level },
     disableRequestLogging: false,
   });
 
   await app.register(websocketPlugin);
 
+  const channelRegistry = new ChannelRegistry({ registry: opts.registry });
+  const hydrator = new FrameHydrator({
+    pool: opts.pool,
+    ...(opts.hydrationDefaultLimit !== undefined
+      ? { defaultLimit: opts.hydrationDefaultLimit }
+      : {}),
+  });
+
   app.get("/health", async () => ({ status: "ok" }));
 
   app.get("/ready", async (_req, reply) => {
-    const health = await checkHealth(redis);
+    const health = await checkHealth(opts.redis);
     if (!health.healthy) {
       return reply.code(503).send({
         status: "unhealthy",
@@ -36,12 +57,19 @@ export async function buildApp({ logger, redis }: BuildAppOptions) {
     return { status: "ready", latency_ms: health.latency_ms };
   });
 
-  // Placeholder echo channel — proves the upgrade path works end-to-end.
+  app.get("/metrics", async (_req, reply) => {
+    reply.header("content-type", opts.registry.contentType);
+    return opts.registry.metrics();
+  });
+
+  // Placeholder echo channel — still useful for verifying the upgrade path through NGINX.
   app.get("/ws/v1/ping", { websocket: true }, (socket) => {
     socket.on("message", (raw: Buffer) => {
       socket.send(`pong:${raw.toString()}`);
     });
   });
 
-  return app;
+  registerAirportEventsRoute(app, { registry: channelRegistry, hydrator, logger: opts.logger });
+
+  return { app, channelRegistry };
 }
