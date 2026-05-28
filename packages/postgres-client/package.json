@@ -1,6 +1,6 @@
 {
   "name": "@aip/postgres-client",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "PostgreSQL client wrapper — pg pool with safe defaults, withTransaction helper, and a health probe. The migration runner lands in T-105.",
   "license": "SEE LICENSE IN ../../LICENSE",

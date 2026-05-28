@@ -1,0 +1,123 @@
+[
+  {
+    "id": "CAM-RWY10L-01",
+    "airport_id": "11111111-1111-1111-1111-aaaaaaaaaaaa",
+    "type": "camera",
+    "lat": 37.6213,
+    "lng": -122.379,
+    "alt_m": 4,
+    "status": "online",
+    "last_seen_at": "2026-05-27T15:00:00.000Z",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "CAM-RWY28R-01",
+    "airport_id": "11111111-1111-1111-1111-aaaaaaaaaaaa",
+    "type": "camera",
+    "lat": 37.6234,
+    "lng": -122.3658,
+    "alt_m": 4,
+    "status": "online",
+    "last_seen_at": "2026-05-27T15:00:00.000Z",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "LDR-RWY10L-01",
+    "airport_id": "11111111-1111-1111-1111-aaaaaaaaaaaa",
+    "type": "lidar",
+    "lat": 37.6225,
+    "lng": -122.378,
+    "alt_m": 6,
+    "status": "online",
+    "last_seen_at": "2026-05-27T15:00:00.000Z",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "WX-TOWER-01",
+    "airport_id": "11111111-1111-1111-1111-aaaaaaaaaaaa",
+    "type": "weather",
+    "lat": 37.6213,
+    "lng": -122.3795,
+    "alt_m": 38,
+    "status": "online",
+    "last_seen_at": "2026-05-27T15:00:00.000Z",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "PRM-PERIMETER-N-01",
+    "airport_id": "11111111-1111-1111-1111-aaaaaaaaaaaa",
+    "type": "perimeter",
+    "lat": 37.6298,
+    "lng": -122.378,
+    "alt_m": 3,
+    "status": "online",
+    "last_seen_at": "2026-05-27T15:00:00.000Z",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "GPS-FLEET-01",
+    "airport_id": "11111111-1111-1111-1111-aaaaaaaaaaaa",
+    "type": "gps",
+    "lat": 37.6213,
+    "lng": -122.379,
+    "alt_m": 3,
+    "status": "degraded",
+    "last_seen_at": "2026-05-27T14:55:00.000Z",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "CAM-RWY04L-01",
+    "airport_id": "11111111-1111-1111-1111-bbbbbbbbbbbb",
+    "type": "camera",
+    "lat": 40.6395,
+    "lng": -73.7789,
+    "alt_m": 4,
+    "status": "online",
+    "last_seen_at": "2026-05-27T15:00:00.000Z",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "CAM-RWY22R-01",
+    "airport_id": "11111111-1111-1111-1111-bbbbbbbbbbbb",
+    "type": "camera",
+    "lat": 40.65,
+    "lng": -73.789,
+    "alt_m": 4,
+    "status": "online",
+    "last_seen_at": "2026-05-27T15:00:00.000Z",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "LDR-RWY04L-01",
+    "airport_id": "11111111-1111-1111-1111-bbbbbbbbbbbb",
+    "type": "lidar",
+    "lat": 40.6398,
+    "lng": -73.778,
+    "alt_m": 6,
+    "status": "online",
+    "last_seen_at": "2026-05-27T15:00:00.000Z",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "WX-TOWER-02",
+    "airport_id": "11111111-1111-1111-1111-bbbbbbbbbbbb",
+    "type": "weather",
+    "lat": 40.6398,
+    "lng": -73.7789,
+    "alt_m": 32,
+    "status": "online",
+    "last_seen_at": "2026-05-27T15:00:00.000Z",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "IMU-VEHICLE-001",
+    "airport_id": "11111111-1111-1111-1111-aaaaaaaaaaaa",
+    "type": "imu",
+    "lat": 37.6215,
+    "lng": -122.3782,
+    "alt_m": 2,
+    "status": "online",
+    "last_seen_at": "2026-05-27T15:00:00.000Z",
+    "created_at": "2026-01-01T00:00:00.000Z"
+  }
+]

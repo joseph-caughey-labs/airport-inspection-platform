@@ -1,4 +1,5 @@
 import { type Logger } from "@aip/logger";
+import { type Registry } from "@aip/metrics";
 import { checkHealth as checkPostgres, type PgPool } from "@aip/postgres-client";
 import { checkHealth as checkRedis, type RedisClient } from "@aip/redis-client";
 import Fastify from "fastify";
@@ -7,14 +8,17 @@ export interface BuildAppOptions {
   logger: Logger;
   redis: RedisClient;
   pool: PgPool;
+  registry: Registry;
 }
 
 /**
- * Shell only — Redis consumers, dedup, prioritization, ordering, and
- * persistence all land in T-205..T-208. /ready probes both Redis and
- * Postgres so depending services know when both deps are reachable.
+ * Service shell. /health, /ready (both deps), /metrics.
+ *
+ * Phase 2 (T-205) adds Redis consumers wired in `main.ts`; this file
+ * stays Fastify-only because the consumers run outside the HTTP
+ * request scope on the same process.
  */
-export async function buildApp({ logger, redis, pool }: BuildAppOptions) {
+export async function buildApp({ logger, redis, pool, registry }: BuildAppOptions) {
   const app = Fastify({
     logger: { level: logger.level },
     disableRequestLogging: false,
@@ -33,6 +37,11 @@ export async function buildApp({ logger, redis, pool }: BuildAppOptions) {
       });
     }
     return { status: "ready", redis: redisHealth, postgres: pgHealth };
+  });
+
+  app.get("/metrics", async (_req, reply) => {
+    reply.header("content-type", registry.contentType);
+    return registry.metrics();
   });
 
   return app;

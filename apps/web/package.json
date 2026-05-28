@@ -1,6 +1,6 @@
 {
   "name": "@aip/web",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Operator + reviewer dashboard. Nuxt 3 shell in this PR; live map, alert feed, incident timeline, reviewer queue all attach in Phase 2 / Phase 4.",
   "license": "SEE LICENSE IN ../../LICENSE",
@@ -17,10 +17,12 @@
   "dependencies": {
     "@aip/shared-contracts": "workspace:*",
     "@pinia/nuxt": "^0.7.0",
+    "maplibre-gl": "^4.7.1",
     "nuxt": "^3.13.2",
     "pinia": "^2.2.4",
     "vue": "^3.5.12",
-    "vue-router": "^4.4.5"
+    "vue-router": "^4.4.5",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@nuxtjs/tailwindcss": "^6.12.2",

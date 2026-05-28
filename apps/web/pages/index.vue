@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { useSeedData } from "~/composables/useSeedData";
+
 const system = useSystemStore();
+const { data, pending } = await useSeedData();
 
 const sixQuestions = [
   "What happened?",
@@ -9,13 +12,6 @@ const sixQuestions = [
   "What should happen next?",
   "Is the airport safe to operate?",
 ] as const;
-
-const phaseTwoComponents = [
-  { name: "Live airfield map", lands: "T-211" },
-  { name: "Live alert feed", lands: "T-212" },
-  { name: "WebSocket integration", lands: "T-213" },
-  { name: "Sensor health panel", lands: "T-212" },
-];
 </script>
 
 <template>
@@ -23,13 +19,41 @@ const phaseTwoComponents = [
     <section class="aip-card">
       <h1 class="text-xl font-semibold tracking-tight">Live Ops</h1>
       <p class="mt-2 max-w-2xl text-sm text-aip-muted">
-        Operator shell scaffold. Connection status, role context, and version are wired through
-        Pinia. The live map, alert feed, and incident timeline attach in Phase 2 and Phase 4.
+        Operator shell. Pick an airport below to open the live airfield map. WebSocket fanout
+        attaches in T-213; today the map renders runways + sensors from the seed dataset.
       </p>
       <div class="mt-4 text-xs font-mono text-aip-muted">
         connection: {{ system.connection }} · operational:
         {{ system.isOperational ? "yes" : "no" }}
       </div>
+    </section>
+
+    <section class="aip-card">
+      <h2 class="text-sm uppercase tracking-widest text-aip-muted">Airports</h2>
+      <div v-if="pending" class="mt-3 text-xs text-aip-muted">Loading…</div>
+      <ul v-else class="mt-3 grid gap-2 sm:grid-cols-2">
+        <li v-for="a in data?.airports ?? []" :key="a.id">
+          <NuxtLink
+            :to="`/airports/${a.id}`"
+            class="flex items-center justify-between gap-3 rounded-sm border border-aip-border bg-aip-panel px-3 py-2 text-sm transition hover:border-aip-accent"
+          >
+            <div>
+              <div class="font-medium">{{ a.name }}</div>
+              <div class="font-mono text-xs text-aip-muted">
+                {{ a.icao_code }} · {{ a.iata_code }} · {{ a.timezone }}
+              </div>
+            </div>
+            <div class="flex flex-col items-end text-xs text-aip-muted">
+              <span class="font-mono tabular-nums">
+                {{ data?.runwaysFor(a.id).length ?? 0 }} rwy
+              </span>
+              <span class="font-mono tabular-nums">
+                {{ data?.sensorsFor(a.id).length ?? 0 }} sensors
+              </span>
+            </div>
+          </NuxtLink>
+        </li>
+      </ul>
     </section>
 
     <section class="aip-card">
@@ -48,20 +72,6 @@ const phaseTwoComponents = [
           <span class="text-sm">{{ q }}</span>
         </li>
       </ol>
-    </section>
-
-    <section class="aip-card">
-      <h2 class="text-sm uppercase tracking-widest text-aip-muted">Landing in Phase 2</h2>
-      <ul class="mt-3 grid gap-2 sm:grid-cols-2">
-        <li
-          v-for="item in phaseTwoComponents"
-          :key="item.name"
-          class="flex items-center justify-between rounded-sm border border-aip-border bg-aip-panel px-3 py-2 text-sm"
-        >
-          <span>{{ item.name }}</span>
-          <span class="font-mono text-xs text-aip-muted">{{ item.lands }}</span>
-        </li>
-      </ul>
     </section>
   </div>
 </template>

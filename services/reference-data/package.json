@@ -1,6 +1,6 @@
 {
   "name": "@aip/reference-data",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Source-of-truth registry: airports, runways, sensors, SOP baseline. Read-only REST API consumed by the validation engine (Layer 4) and the operator dashboard.",
   "license": "SEE LICENSE IN ../../LICENSE",
