@@ -4,3 +4,5 @@ export * from "./sensors.js";
 export * from "./users.js";
 export * from "./incidents.js";
 export * from "./audit-events.js";
+export * from "./sensor-events.js";
+export * from "./event-outbox.js";
