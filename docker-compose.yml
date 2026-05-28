@@ -1,0 +1,362 @@
+name: airport-inspection-platform
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aip-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-airport_ops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-dev}
+      POSTGRES_DB: ${POSTGRES_DB:-airport_inspection}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/docker/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-airport_ops} -d ${POSTGRES_DB:-airport_inspection}
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - aip-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: aip-redis
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+      - ./infrastructure/docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - aip-net
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./services/api-gateway/Dockerfile
+    container_name: aip-api-gateway
+    restart: unless-stopped
+    environment:
+      PORT: 3001
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3001/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - aip-net
+
+  sensor-gateway:
+    build:
+      context: .
+      dockerfile: ./services/sensor-gateway/Dockerfile
+    container_name: aip-sensor-gateway
+    restart: unless-stopped
+    environment:
+      PORT: 3003
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "3003:3003"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3003/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - aip-net
+
+  event-pipeline:
+    build:
+      context: .
+      dockerfile: ./services/event-pipeline/Dockerfile
+    container_name: aip-event-pipeline
+    restart: unless-stopped
+    environment:
+      PORT: 3004
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-airport_ops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-dev}
+      POSTGRES_DB: ${POSTGRES_DB:-airport_inspection}
+    ports:
+      - "3004:3004"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3004/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - aip-net
+
+  ws-broadcaster:
+    build:
+      context: .
+      dockerfile: ./services/ws-broadcaster/Dockerfile
+    container_name: aip-ws-broadcaster
+    restart: unless-stopped
+    environment:
+      PORT: 3005
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "3005:3005"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3005/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - aip-net
+
+  incident-service:
+    build:
+      context: .
+      dockerfile: ./services/incident-service/Dockerfile
+    container_name: aip-incident-service
+    restart: unless-stopped
+    environment:
+      PORT: 3006
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-airport_ops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-dev}
+      POSTGRES_DB: ${POSTGRES_DB:-airport_inspection}
+    ports:
+      - "3006:3006"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3006/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - aip-net
+
+  audit-service:
+    build:
+      context: .
+      dockerfile: ./services/audit-service/Dockerfile
+    container_name: aip-audit-service
+    restart: unless-stopped
+    environment:
+      PORT: 3007
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-airport_ops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-dev}
+      POSTGRES_DB: ${POSTGRES_DB:-airport_inspection}
+    ports:
+      - "3007:3007"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3007/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - aip-net
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: ./services/notification-service/Dockerfile
+    container_name: aip-notification-service
+    restart: unless-stopped
+    environment:
+      PORT: 3008
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "3008:3008"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3008/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - aip-net
+
+  ai-inference:
+    build:
+      context: .
+      dockerfile: ./services/ai-inference/Dockerfile
+    container_name: aip-ai-inference
+    restart: unless-stopped
+    environment:
+      PORT: 8000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - aip-net
+
+  validation-engine:
+    build:
+      context: .
+      dockerfile: ./services/validation-engine/Dockerfile
+    container_name: aip-validation-engine
+    restart: unless-stopped
+    environment:
+      PORT: 3009
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "3009:3009"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3009/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - aip-net
+
+  reference-data:
+    build:
+      context: .
+      dockerfile: ./services/reference-data/Dockerfile
+    container_name: aip-reference-data
+    restart: unless-stopped
+    environment:
+      PORT: 3002
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-airport_ops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-dev}
+      POSTGRES_DB: ${POSTGRES_DB:-airport_inspection}
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3002/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - aip-net
+
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+    container_name: aip-web
+    restart: unless-stopped
+    environment:
+      NITRO_PORT: 3000
+      NITRO_HOST: 0.0.0.0
+      NUXT_PUBLIC_API_BASE_URL: /api/v1
+      NUXT_PUBLIC_WS_BASE_URL: /ws/v1
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - aip-net
+
+  nginx:
+    build:
+      context: ./infrastructure/docker/nginx
+      dockerfile: Dockerfile
+    container_name: aip-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-3000}:80"
+    depends_on:
+      web:
+        condition: service_healthy
+      api-gateway:
+        condition: service_healthy
+      ws-broadcaster:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - aip-net
+
+volumes:
+  postgres_data:
+    name: aip-postgres-data
+  redis_data:
+    name: aip-redis-data
+
+networks:
+  aip-net:
+    name: aip-net
+    driver: bridge

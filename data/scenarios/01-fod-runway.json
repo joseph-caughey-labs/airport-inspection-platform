@@ -1,0 +1,38 @@
+{
+  "id": "01-fod-runway",
+  "title": "FOD detected on active runway",
+  "description": "Camera detects a metallic object on runway 10L at SFO during active operations. Highest-severity flow: critical incident, immediate operator alert, runway-status flag, full audit lineage.",
+  "airport_icao": "KSFO",
+  "trigger": {
+    "sensor_id": "CAM-RWY10L-01",
+    "frame_id": "f-2026-05-27-15-00-00-001",
+    "detection": {
+      "class": "fod",
+      "confidence": 0.92,
+      "bbox": { "x": 412, "y": 318, "w": 28, "h": 22 },
+      "location": {
+        "runway": "10L",
+        "zone": "touchdown",
+        "lat": 37.6213,
+        "lng": -122.379
+      }
+    }
+  },
+  "expected": {
+    "severity": "critical",
+    "validation": {
+      "certified": true,
+      "hitl_required": false
+    },
+    "incident_status_after_ack": "acknowledged",
+    "audit_events_at_least": [
+      "sensor.frame.captured",
+      "ai.detection.emitted",
+      "validation.certified",
+      "incident.created",
+      "incident.acknowledged",
+      "incident.assigned",
+      "incident.resolved"
+    ]
+  }
+}

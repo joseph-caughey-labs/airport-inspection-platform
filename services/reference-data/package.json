@@ -1,0 +1,33 @@
+{
+  "name": "@aip/reference-data",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Source-of-truth registry: airports, runways, sensors, SOP baseline. Read-only REST API consumed by the validation engine (Layer 4) and the operator dashboard.",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "type": "module",
+  "main": "./src/main.ts",
+  "scripts": {
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@aip/db-schema": "workspace:*",
+    "@aip/logger": "workspace:*",
+    "@aip/metrics": "workspace:*",
+    "@aip/postgres-client": "workspace:*",
+    "@aip/shared-contracts": "workspace:*",
+    "drizzle-orm": "^0.36.1",
+    "fastify": "^5.0.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2"
+  }
+}
