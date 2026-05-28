@@ -1,37 +1,27 @@
-"""Smoke tests for the ai-inference shell.
+"""Smoke tests for the ai-inference service.
 
-These prove the pytest harness runs and the FastAPI app boots without
-a real Redis. Detector / calibration / pipeline assertions land in
-Phase 3 (T-302 onwards).
+Proves the FastAPI app boots, the runtime lifespan starts + stops
+cleanly with an empty detector registry, and the HTTP probes behave
+correctly with and without a working broker.
 """
 
 from __future__ import annotations
 
-from typing import Any
-from unittest.mock import AsyncMock
-
 import pytest
+from _fakes import FakeRedis
 from fastapi.testclient import TestClient
 
 from src.app import build_app
 
 
-class _FakeRedis:
-    """Bare-minimum stub satisfying the slice of redis.asyncio.Redis we use."""
-
-    def __init__(self, ping_result: Any = "PONG") -> None:
-        self.ping = AsyncMock(return_value=ping_result)
-
-
 @pytest.fixture
-def healthy_client() -> TestClient:
-    return TestClient(build_app(redis_client=_FakeRedis()))
+def healthy_client(fake_redis: FakeRedis) -> TestClient:
+    return TestClient(build_app(redis_client=fake_redis))
 
 
 @pytest.fixture
 def unhealthy_client() -> TestClient:
-    redis = _FakeRedis()
-    redis.ping = AsyncMock(side_effect=Exception("connection refused"))
+    redis = FakeRedis(ping_exception=Exception("connection refused"))
     return TestClient(build_app(redis_client=redis))
 
 
