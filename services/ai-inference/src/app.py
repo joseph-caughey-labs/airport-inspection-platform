@@ -21,9 +21,16 @@ from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 from prometheus_client.metrics_core import GaugeMetricFamily
 
-from .detectors import DetectorRegistry
+from .detectors import DetectorRegistry, FodDetector
 from .pipeline import AiRuntime, RuntimeConfig
 from .redis_client import check_health, create_redis
+
+
+def _default_registry(cfg: RuntimeConfig) -> DetectorRegistry:
+    """Production detector registry. Each T-30x ticket adds one head."""
+    reg = DetectorRegistry()
+    reg.register(FodDetector(seed=cfg.seed))
+    return reg
 
 
 def build_app(
@@ -32,8 +39,8 @@ def build_app(
     config: RuntimeConfig | None = None,
 ) -> FastAPI:
     client = redis_client if redis_client is not None else create_redis()
-    registry = detector_registry if detector_registry is not None else DetectorRegistry()
     cfg = config if config is not None else RuntimeConfig.from_env()
+    registry = detector_registry if detector_registry is not None else _default_registry(cfg)
     runtime = AiRuntime(redis=client, registry=registry, config=cfg)
     logger = logging.getLogger("ai-inference.app")
 
