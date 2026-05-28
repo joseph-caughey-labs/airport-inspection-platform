@@ -13,9 +13,20 @@ export interface BroadcastClient {
   /** Best-effort terminate; the route calls this on auth/parse failure. */
   close(code?: number, reason?: string): void;
   readonly role: ClientRole;
+  /** Server-issued id used in presence + audit. */
+  readonly connection_id: string;
+  /** ISO-8601 timestamp of the successful upgrade. */
+  readonly connected_at: string;
 }
 
 export type ClientRole = "operator" | "supervisor" | "viewer" | "system";
+
+/** Per-subscriber view exposed by `ChannelRegistry.snapshot()` for presence broadcasts. */
+export interface PresenceEntry {
+  connection_id: string;
+  role: ClientRole;
+  connected_at: string;
+}
 
 /** Topic predicates the registry consults before dispatching a frame. */
 export interface ClientFilter {

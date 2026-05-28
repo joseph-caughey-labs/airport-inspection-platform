@@ -1,8 +1,14 @@
 import { type Logger } from "@aip/logger";
 import { type FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
 import { type FrameHydrator } from "../channels/hydrator.js";
 import { type ChannelRegistry } from "../channels/registry.js";
 import { type BroadcastClient, type ClientRole } from "../channels/types.js";
+import {
+  broadcastPresenceChange,
+  buildPresenceMessage,
+  PRESENCE_SNAPSHOT_TYPE,
+} from "../presence/index.js";
 
 export interface AirportEventsRouteOptions {
   registry: ChannelRegistry;
@@ -24,16 +30,17 @@ function parseRole(raw: string | undefined): ClientRole {
  * On connect:
  *   1. Validate airport id (uuid).
  *   2. Resolve role (query string today; bearer-token RBAC in T-504).
- *   3. Hydrate last N persisted frames straight from the socket so the
- *      client paints history before seeing the live tail.
- *   4. Subscribe to the registry; from this point the redis-bridge
- *      pushes live frames automatically.
+ *   3. Hydrate — either `last_event_id` resume (T-210) or default tail.
+ *      Resume reads frames since the cursor and tags the result with
+ *      `mode: "resume" | "resume_fallback" | "resume_capped"` so the
+ *      UI can flag a history gap to the user.
+ *   4. Send a `presence.snapshot` to the new client.
+ *   5. Subscribe to the registry, then fan a `presence.changed` to
+ *      every existing subscriber (the new one is already counted).
  *
- * Hydration races: any live frame that arrives between the SELECT
- * cursor and the `subscribe()` call will simply not show up. With
- * `last_event_id` resume (T-210) the client backfills the gap on
- * the next reconnect. For T-209 we accept the window — it's narrower
- * than the dedup window and the outbox loop is idempotent anyway.
+ * Hydration→subscribe race: with `last_event_id` resume the gap is
+ * recoverable on the next reconnect, so we no longer treat it as a
+ * known limitation — the client's persisted cursor closes it.
  */
 export function registerAirportEventsRoute(
   app: FastifyInstance,
@@ -41,7 +48,7 @@ export function registerAirportEventsRoute(
 ): void {
   app.get<{
     Params: { airportId: string };
-    Querystring: { role?: string; hydrate?: string };
+    Querystring: { role?: string; hydrate?: string; last_event_id?: string };
   }>("/ws/v1/airport/:airportId/events", { websocket: true }, async (socket, req) => {
     const airportId = req.params.airportId;
     if (!UUID_RE.test(airportId)) {
@@ -50,19 +57,35 @@ export function registerAirportEventsRoute(
     }
     const role = parseRole(req.query.role);
     const hydrateLimit = req.query.hydrate ? Number(req.query.hydrate) : undefined;
+    const lastEventId = req.query.last_event_id?.trim();
 
     const client: BroadcastClient = {
       role,
+      connection_id: randomUUID(),
+      connected_at: new Date().toISOString(),
       send: (data) => socket.send(data),
       close: (code, reason) => socket.close(code, reason),
     };
 
     try {
-      const frames = await opts.hydrator.hydrate(
-        airportId,
-        Number.isFinite(hydrateLimit) ? hydrateLimit : undefined,
-      );
-      for (const f of frames) socket.send(f.message);
+      if (lastEventId) {
+        const { frames, mode } = await opts.hydrator.hydrateSince(
+          airportId,
+          lastEventId,
+          Number.isFinite(hydrateLimit) ? hydrateLimit : undefined,
+        );
+        for (const f of frames) socket.send(f.message);
+        opts.logger.info(
+          { airportId, role, lastEventId, mode, replayed: frames.length },
+          "ws subscriber resumed",
+        );
+      } else {
+        const frames = await opts.hydrator.hydrate(
+          airportId,
+          Number.isFinite(hydrateLimit) ? hydrateLimit : undefined,
+        );
+        for (const f of frames) socket.send(f.message);
+      }
     } catch (err) {
       opts.logger.error(
         { err: err instanceof Error ? err.message : String(err), airportId },
@@ -70,18 +93,33 @@ export function registerAirportEventsRoute(
       );
     }
 
+    // Initial presence snapshot — sent BEFORE subscribe so the new
+    // client sees the existing peers as they were when it joined.
+    socket.send(
+      buildPresenceMessage(PRESENCE_SNAPSHOT_TYPE, airportId, opts.registry.snapshot(airportId)),
+    );
+
     opts.registry.subscribe(airportId, client);
+    broadcastPresenceChange(opts.registry, airportId);
+
     opts.logger.info(
-      { airportId, role, subscribers: opts.registry.subscriberCount(airportId) },
+      {
+        airportId,
+        role,
+        connection_id: client.connection_id,
+        subscribers: opts.registry.subscriberCount(airportId),
+      },
       "ws subscriber attached",
     );
 
-    socket.on("close", () => {
+    const detach = (): void => {
       opts.registry.unsubscribe(airportId, client);
-    });
+      broadcastPresenceChange(opts.registry, airportId);
+    };
+    socket.on("close", detach);
     socket.on("error", (err: Error) => {
       opts.logger.warn({ airportId, err: err.message }, "ws socket error");
-      opts.registry.unsubscribe(airportId, client);
+      detach();
     });
   });
 }
