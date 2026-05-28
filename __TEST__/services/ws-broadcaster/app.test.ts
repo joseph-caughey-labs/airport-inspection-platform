@@ -90,4 +90,20 @@ describe("ws-broadcaster — /ws/v1/airport/:id/events", () => {
     expect(sock.readyState).toBe(WebSocket.OPEN);
     sock.close();
   });
+
+  it("sends a presence.snapshot as the first message after connect", async () => {
+    const url = `ws://${address}/ws/v1/airport/11111111-2222-3333-4444-555555555555/events`;
+    const sock = new WebSocket(url);
+    const firstFrame = await new Promise<string>((resolve, reject) => {
+      sock.on("message", (data) => {
+        resolve(data.toString());
+        sock.close();
+      });
+      sock.on("error", reject);
+      setTimeout(() => reject(new Error("ws timeout")), 2000);
+    });
+    const parsed = JSON.parse(firstFrame);
+    expect(parsed.type).toBe("presence.snapshot");
+    expect(parsed.payload.airport_id).toBe("11111111-2222-3333-4444-555555555555");
+  });
 });

@@ -10,10 +10,17 @@ function reg() {
   return createRegistry({ service: "registry-test", collectDefault: false });
 }
 
+let connIdSeq = 0;
 function makeClient(role: ClientRole = "viewer") {
   const send = vi.fn();
   const close = vi.fn();
-  const c: BroadcastClient = { role, send, close };
+  const c: BroadcastClient = {
+    role,
+    send,
+    close,
+    connection_id: `conn-${++connIdSeq}`,
+    connected_at: "2026-05-28T10:00:00.000Z",
+  };
   return { client: c, send, close };
 }
 

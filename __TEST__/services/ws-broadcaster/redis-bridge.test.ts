@@ -13,10 +13,17 @@ function reg() {
 const AIRPORT_A = "11111111-2222-3333-4444-555555555555";
 const AIRPORT_B = "99999999-9999-9999-9999-999999999999";
 
+let connIdSeq = 0;
 function makeClient(): { client: BroadcastClient; send: ReturnType<typeof vi.fn> } {
   const send = vi.fn();
   return {
-    client: { role: "viewer", send, close: vi.fn() },
+    client: {
+      role: "viewer",
+      send,
+      close: vi.fn(),
+      connection_id: `conn-${++connIdSeq}`,
+      connected_at: "2026-05-28T10:00:00.000Z",
+    },
     send,
   };
 }

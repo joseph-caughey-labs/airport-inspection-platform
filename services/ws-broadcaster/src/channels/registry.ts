@@ -1,5 +1,5 @@
 import { Counter, Gauge, type Registry } from "prom-client";
-import { ALLOW_ALL, type BroadcastClient, type ClientFilter } from "./types.js";
+import { ALLOW_ALL, type BroadcastClient, type ClientFilter, type PresenceEntry } from "./types.js";
 
 export interface RegistryOptions {
   registry: Registry;
@@ -76,6 +76,22 @@ export class ChannelRegistry {
 
   subscriberCount(airportId: string): number {
     return this.clients.get(airportId)?.size ?? 0;
+  }
+
+  /**
+   * Snapshot of all subscribers on `airportId` — fuel for the
+   * `presence.snapshot` / `presence.changed` WS broadcasts. Order is
+   * stable per Set iteration (insertion order), so the UI can render
+   * the list without re-sorting on every frame.
+   */
+  snapshot(airportId: string): PresenceEntry[] {
+    const set = this.clients.get(airportId);
+    if (!set) return [];
+    return Array.from(set, (c) => ({
+      connection_id: c.connection_id,
+      role: c.role,
+      connected_at: c.connected_at,
+    }));
   }
 
   /**
