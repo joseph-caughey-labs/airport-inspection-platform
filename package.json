@@ -24,10 +24,13 @@
     "db:seed": "pnpm --filter @aip/db-schema db:seed",
     "format": "prettier --write \"**/*.{ts,tsx,vue,js,mjs,cjs,json,md,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,vue,js,mjs,cjs,json,md,yaml,yml}\"",
+    "e2e": "playwright test --config=__TEST__/e2e/playwright.config.ts",
+    "e2e:install": "playwright install --with-deps chromium",
     "clean": "turbo run clean && rm -rf node_modules .turbo"
   },
   "devDependencies": {
     "@eslint/js": "^9.12.0",
+    "@playwright/test": "^1.48.0",
     "@types/node": "^22.7.5",
     "eslint": "^9.12.0",
     "prettier": "^3.3.3",
