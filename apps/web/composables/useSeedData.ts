@@ -9,8 +9,11 @@ import type { Airport, Runway, Sensor } from "~/types/airport";
  * Bundles per-airport grouping so callers can write
  * `runwaysFor(airportId)` without re-implementing the filter.
  *
- * Cached on the Nuxt server side via useAsyncData; refetches only
- * when the airport id changes.
+ * `server: false` makes the fetch client-only. The seed lives under
+ * `apps/web/public/seed/` and is served by Nitro at HTTP level, but
+ * the SSR `$fetch` resolves relative URLs against a host without the
+ * dev port, which 404s. Reference-data lands as a real service in
+ * Phase 3 — at that point this becomes a proper server-tolerant fetch.
  */
 export interface SeedBundle {
   airports: Airport[];
@@ -27,14 +30,18 @@ async function fetchSeed<T>(path: string, schema: { parse: (raw: unknown) => T }
 }
 
 export function useSeedData() {
-  return useAsyncData<SeedBundle>("aip-seed", async () => {
-    const [airports, runways, sensors] = await Promise.all([
-      fetchSeed("/seed/airports.json", AirportList),
-      fetchSeed("/seed/runways.json", RunwayList),
-      fetchSeed("/seed/sensors.json", SensorList),
-    ]);
-    return buildSeedBundle({ airports, runways, sensors });
-  });
+  return useAsyncData<SeedBundle>(
+    "aip-seed",
+    async () => {
+      const [airports, runways, sensors] = await Promise.all([
+        fetchSeed("/seed/airports.json", AirportList),
+        fetchSeed("/seed/runways.json", RunwayList),
+        fetchSeed("/seed/sensors.json", SensorList),
+      ]);
+      return buildSeedBundle({ airports, runways, sensors });
+    },
+    { server: false },
+  );
 }
 
 /** Pure factory — exported so unit tests can exercise the lookups without HTTP. */
