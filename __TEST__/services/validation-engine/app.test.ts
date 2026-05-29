@@ -5,6 +5,22 @@ import { buildApp } from "../../../services/validation-engine/src/app.js";
 
 const logger = createLogger({ service: "validation-engine-test", level: "fatal" });
 
+/**
+ * Canonical AI-detection envelope that satisfies L1 (T-406). HTTP
+ * tests use this whenever they need a 200/certified=true path —
+ * before T-406 we got away with `{}` because L1 was a stub.
+ */
+function validSubmissionPayload(): unknown {
+  return {
+    event_id: "11111111-2222-3333-4444-555555555555",
+    event_type: "ai.detection.fod.emitted",
+    schema_version: "v1",
+    source: { service: "http-surface-test" },
+    timestamp: new Date().toISOString(),
+    payload: { sensor_id: "CAM-N-03", detection_class: "fod", confidence: 0.5 },
+  };
+}
+
 describe("validation-engine — HTTP surface", () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
   beforeAll(async () => {
@@ -31,11 +47,11 @@ describe("validation-engine — HTTP surface", () => {
     expect(res.headers["content-type"]).toContain("text/plain");
   });
 
-  it("POST /validate returns a run with 10 stub-passed layers", async () => {
+  it("POST /validate returns a run with 10 passed layers on a valid envelope", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/validate",
-      payload: { payload: { hello: "world" } },
+      payload: { payload: validSubmissionPayload() },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
@@ -47,11 +63,31 @@ describe("validation-engine — HTTP surface", () => {
     expect(body.layers.every((l) => l.passed)).toBe(true);
   });
 
+  it("POST /validate short-circuits on a malformed envelope (L1 fails)", async () => {
+    // Production default is shortCircuit: true — L1 rejects an
+    // empty payload and the orchestrator stops, so we expect FEWER
+    // than 10 layers in the result.
+    const res = await app.inject({
+      method: "POST",
+      url: "/validate",
+      payload: { payload: {} },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      certified: boolean;
+      layers: { layer: string; passed: boolean; error_code?: string }[];
+    };
+    expect(body.certified).toBe(false);
+    expect(body.layers).toHaveLength(1);
+    expect(body.layers[0]?.layer).toBe("01_input");
+    expect(body.layers[0]?.passed).toBe(false);
+  });
+
   it("POST /validate rejects body with invalid submission_id (not a UUID)", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/validate",
-      payload: { submission_id: "not-a-uuid", payload: {} },
+      payload: { submission_id: "not-a-uuid", payload: validSubmissionPayload() },
     });
     expect(res.statusCode).toBe(400);
     expect((res.json() as { error: { code: string } }).error.code).toBe("validation_failed");
@@ -62,7 +98,7 @@ describe("validation-engine — HTTP surface", () => {
     const res = await app.inject({
       method: "POST",
       url: "/validate",
-      payload: { submission_id: id, payload: {} },
+      payload: { submission_id: id, payload: validSubmissionPayload() },
     });
     expect(res.statusCode).toBe(200);
     expect((res.json() as { submission_id: string }).submission_id).toBe(id);
@@ -72,7 +108,7 @@ describe("validation-engine — HTTP surface", () => {
     await app.inject({
       method: "POST",
       url: "/validate",
-      payload: { payload: {} },
+      payload: { payload: validSubmissionPayload() },
     });
     const metricsRes = await app.inject({ method: "GET", url: "/metrics" });
     expect(metricsRes.body).toMatch(/validation_runs_total\{[^}]*certified="true"[^}]*\}\s+\d+/);
@@ -82,7 +118,7 @@ describe("validation-engine — HTTP surface", () => {
     await app.inject({
       method: "POST",
       url: "/validate",
-      payload: { payload: {} },
+      payload: { payload: validSubmissionPayload() },
     });
     const metricsRes = await app.inject({ method: "GET", url: "/metrics" });
     // At least 01_input through 10_certification appear with passed=true.

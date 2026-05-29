@@ -9,9 +9,29 @@ import {
   type ValidationLayer,
 } from "../../../services/validation-engine/src/layers/index.js";
 
+/**
+ * A payload that satisfies L1's real validation rules. Pre-T-406
+ * these tests passed `{}` because L1 was a stub; now that L1
+ * enforces envelope + window + geo, every orchestrator test needs
+ * a realistic payload to exercise the layer chain.
+ *
+ * Tests that specifically want a *failing* L1 still construct their
+ * own input.
+ */
+function validInput(): unknown {
+  return {
+    event_id: "11111111-2222-3333-4444-555555555555",
+    event_type: "ai.detection.fod.emitted",
+    schema_version: "v1",
+    source: { service: "test" },
+    timestamp: new Date().toISOString(),
+    payload: { sensor_id: "CAM-N-03", detection_class: "fod", confidence: 0.5 },
+  };
+}
+
 describe("runValidation — stub layers", () => {
   it("runs all 10 layers in order", async () => {
-    const run = await runValidation({});
+    const run = await runValidation(validInput());
     expect(run.layers).toHaveLength(10);
     const ids = run.layers.map((l) => l.layer);
     expect(ids).toEqual([
@@ -29,13 +49,13 @@ describe("runValidation — stub layers", () => {
   });
 
   it("returns certified: true when every layer passes", async () => {
-    const run = await runValidation({});
+    const run = await runValidation(validInput());
     expect(run.certified).toBe(true);
     expect(run.layers.every((l) => l.passed)).toBe(true);
   });
 
   it("populates run_id, submission_id, and ISO timestamps", async () => {
-    const run = await runValidation({});
+    const run = await runValidation(validInput());
     expect(run.run_id).toMatch(/^[0-9a-f-]{36}$/);
     expect(run.submission_id).toMatch(/^[0-9a-f-]{36}$/);
     expect(run.started_at).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
@@ -44,7 +64,7 @@ describe("runValidation — stub layers", () => {
 
   it("preserves caller-supplied submission_id", async () => {
     const id = "11111111-2222-3333-4444-555555555555";
-    const run = await runValidation({}, { submission_id: id });
+    const run = await runValidation(validInput(), { submission_id: id });
     expect(run.submission_id).toBe(id);
   });
 
@@ -57,7 +77,7 @@ describe("runValidation — stub layers", () => {
         return layer.run(ctx);
       },
     }));
-    await runValidation({}, { layers: probe });
+    await runValidation(validInput(), { layers: probe });
     expect(seen).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
   });
 });
@@ -82,7 +102,7 @@ describe("runValidation — short-circuit", () => {
       ORDERED_LAYERS[3]!,
       ORDERED_LAYERS[4]!,
     ];
-    const run = await runValidation({}, { layers, shortCircuit: true });
+    const run = await runValidation(validInput(), { layers, shortCircuit: true });
     expect(run.layers).toHaveLength(3);
     expect(run.certified).toBe(false);
   });
@@ -96,7 +116,7 @@ describe("runValidation — short-circuit", () => {
       },
     };
     const layers = [failingLayer, ...ORDERED_LAYERS.slice(1)];
-    const run = await runValidation({}, { layers });
+    const run = await runValidation(validInput(), { layers });
     expect(run.layers).toHaveLength(10);
     expect(run.certified).toBe(false);
   });
@@ -118,7 +138,7 @@ describe("runValidation — metrics", () => {
       },
     };
     const layers = [ORDERED_LAYERS[0]!, ORDERED_LAYERS[1]!, failingLayer];
-    await runValidation({}, { layers, metrics });
+    await runValidation(validInput(), { layers, metrics });
     const text = await registry.metrics();
     expect(text).toMatch(
       /validation_layers_run_total\{[^}]*layer="01_input"[^}]*passed="true"[^}]*\}\s+1/,
@@ -138,7 +158,7 @@ describe("runValidation — metrics", () => {
         return { layer: "01_input", passed: false };
       },
     };
-    await runValidation({}, { layers: [failingLayer], metrics });
+    await runValidation(validInput(), { layers: [failingLayer], metrics });
     const text = await registry.metrics();
     expect(text).toMatch(/validation_runs_total\{[^}]*certified="false"[^}]*\}\s+1/);
   });
@@ -146,7 +166,7 @@ describe("runValidation — metrics", () => {
   it("observes a sample on validation_run_duration_seconds", async () => {
     const registry = reg();
     const metrics = createOrchestratorMetrics(registry);
-    await runValidation({}, { metrics });
+    await runValidation(validInput(), { metrics });
     const text = await registry.metrics();
     // _count and _sum are emitted by histograms; at least one sample
     // should be there with certified=true.
