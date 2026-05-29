@@ -14,6 +14,7 @@ from _fakes import FakeBroker, FakeRedis
 from fastapi.testclient import TestClient
 
 from src.app import build_app
+from src.confidence import TemporalSmoother
 from src.detectors import DetectorRegistry
 from src.fallback import (
     DEFAULT_CPU_FALLBACK_LATENCY_MS,
@@ -28,6 +29,12 @@ from src.models import (
     SensorFramePayload,
 )
 from src.pipeline import AiRuntime, RuntimeConfig
+
+
+def _no_smoothing() -> TemporalSmoother:
+    """Pre-T-309 tests exercise single-frame publish; disable smoothing
+    so the default 5/3 window doesn't suppress them."""
+    return TemporalSmoother(classes_to_smooth=())
 
 
 def _frame(frame_id: str = "F-1") -> SensorFrameEvent:
@@ -168,7 +175,9 @@ async def test_runtime_tags_detections_with_gpu_mode_by_default(
 ) -> None:
     registry = DetectorRegistry()
     registry.register(_StubDetector())
-    runtime = AiRuntime(redis=fake_redis, registry=registry, config=RuntimeConfig())
+    runtime = AiRuntime(
+        redis=fake_redis, registry=registry, config=RuntimeConfig(), smoother=_no_smoothing()
+    )
     await runtime.handle_frame(_frame())
     envelope = json.loads(fake_broker.published[-1][1])
     meta = envelope["payload"]["metadata"]
@@ -183,7 +192,9 @@ async def test_runtime_tags_detections_with_cpu_fallback_after_toggle(
     """AC: fallback events tagged `mode: cpu_fallback` in metadata."""
     registry = DetectorRegistry()
     registry.register(_StubDetector())
-    runtime = AiRuntime(redis=fake_redis, registry=registry, config=RuntimeConfig())
+    runtime = AiRuntime(
+        redis=fake_redis, registry=registry, config=RuntimeConfig(), smoother=_no_smoothing()
+    )
     await runtime.mode_controller.set_mode("cpu_fallback", "thermal_alert")
     await runtime.handle_frame(_frame("with-cpu"))
     envelope = json.loads(fake_broker.published[-1][1])
@@ -199,7 +210,9 @@ async def test_runtime_reads_mode_at_emit_time_for_mid_flight_toggle(
     """A flip between handling two frames must affect the second emit."""
     registry = DetectorRegistry()
     registry.register(_StubDetector())
-    runtime = AiRuntime(redis=fake_redis, registry=registry, config=RuntimeConfig())
+    runtime = AiRuntime(
+        redis=fake_redis, registry=registry, config=RuntimeConfig(), smoother=_no_smoothing()
+    )
     await runtime.handle_frame(_frame("F-gpu"))
     await runtime.mode_controller.set_mode("cpu_fallback", "manual_toggle")
     await runtime.handle_frame(_frame("F-cpu"))
