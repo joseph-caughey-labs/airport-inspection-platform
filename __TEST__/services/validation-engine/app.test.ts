@@ -67,4 +67,30 @@ describe("validation-engine — HTTP surface", () => {
     expect(res.statusCode).toBe(200);
     expect((res.json() as { submission_id: string }).submission_id).toBe(id);
   });
+
+  it("POST /validate counts the run on validation_runs_total{certified=true}", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/validate",
+      payload: { payload: {} },
+    });
+    const metricsRes = await app.inject({ method: "GET", url: "/metrics" });
+    expect(metricsRes.body).toMatch(/validation_runs_total\{[^}]*certified="true"[^}]*\}\s+\d+/);
+  });
+
+  it("POST /validate counts every layer on validation_layers_run_total", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/validate",
+      payload: { payload: {} },
+    });
+    const metricsRes = await app.inject({ method: "GET", url: "/metrics" });
+    // At least 01_input through 10_certification appear with passed=true.
+    expect(metricsRes.body).toMatch(
+      /validation_layers_run_total\{[^}]*layer="01_input"[^}]*passed="true"[^}]*\}/,
+    );
+    expect(metricsRes.body).toMatch(
+      /validation_layers_run_total\{[^}]*layer="10_certification"[^}]*passed="true"[^}]*\}/,
+    );
+  });
 });

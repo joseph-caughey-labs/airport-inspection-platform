@@ -1,39 +1,21 @@
-import { z } from "zod";
-
 /**
- * Canonical id for each of the 10 Parity validation layers. This is
- * a candidate for promotion to `@aip/shared-contracts` once consumers
- * exist (T-405); for now it's local to the engine.
+ * Layer contract types. The wire-format shapes (`ValidationLayerId`,
+ * `ValidationLayerResult`) live in `@aip/shared-contracts/validation`
+ * as of T-405 so the bridge in event-pipeline and the operator UI in
+ * apps/web can consume them without depending on this service. This
+ * file only carries the in-process types that a layer's `run()`
+ * actually implements.
  */
-export const ValidationLayerId = z.enum([
-  "01_input",
-  "02_schema",
-  "03_business_rules",
-  "04_source_of_truth",
-  "05_cross_system",
-  "06_ai_output",
-  "07_risk",
-  "08_human_review",
-  "09_audit",
-  "10_certification",
-]);
-export type ValidationLayerId = z.infer<typeof ValidationLayerId>;
+import type { ValidationLayerId, ValidationLayerResult } from "@aip/shared-contracts";
+
+export type { ValidationLayerId, ValidationLayerResult } from "@aip/shared-contracts";
+export { ValidationLayerId as ValidationLayerIdSchema } from "@aip/shared-contracts";
 
 /** Input to every layer. Layers may read accumulated results from prior layers. */
 export interface ValidationContext {
   submission_id: string;
   payload: unknown;
   previous_results: ValidationLayerResult[];
-}
-
-/** Output from every layer. */
-export interface ValidationLayerResult {
-  layer: ValidationLayerId;
-  passed: boolean;
-  details?: Record<string, unknown>;
-  evidence?: unknown[];
-  error_code?: string;
-  error_message?: string;
 }
 
 /** Implementation contract for every layer. */

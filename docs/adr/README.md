@@ -39,7 +39,7 @@ Sequential. Never reuse a number, even for superseded ADRs. Status field handles
 | 0005                                       | Idempotency and retries                               | _Draft (T-503)_     | SRE                 |
 | 0006                                       | Event ordering and deduplication                      | _Draft (T-206)_     | Backend             |
 | 0007                                       | Edge / cloud separation                               | _Pending (Phase 5)_ | Principal Architect |
-| 0008                                       | Validation engine design                              | _Draft (T-405)_     | Validation Engineer |
+| [0008](0008-parity-10-layer-validation.md) | Parity 10-layer validation pipeline                   | Accepted            | Validation Engineer |
 | 0009                                       | HITL routing thresholds                               | _Draft (T-409)_     | Validation Engineer |
 | [0010](0010-audit-immutability.md)         | Audit immutability                                    | Accepted            | Database            |
 | 0011                                       | Input validation strategy                             | _Draft (T-505)_     | Security            |
