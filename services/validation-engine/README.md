@@ -11,8 +11,8 @@ The Parity 10-layer validation pipeline. Architecture is locked by [ADR 0008](..
 | 3   | `03-business-rules/`  | **T-408 (live)** | SOP-driven policy: severity-by-location, dimension/width/setback thresholds, high-risk species severity floor. |
 | 4   | `04-source-of-truth/` | **T-409 (live)** | Reference-data lookup: sensor + airport must exist.                                                            |
 | 5   | `05-cross-system/`    | **T-409 (live)** | Cross-check: payload airport matches sensor's registered airport; sensor isn't `offline` at capture time.      |
-| 6   | `06-ai-output/`       | T-410            | Bbox sanity, confidence ≥ threshold, evidence linkage.                                                         |
-| 7   | `07-risk/`            | T-410            | Named-factor risk score; threshold gating.                                                                     |
+| 6   | `06-ai-output/`       | **T-410 (live)** | Bbox extent inside image, confidence ≥ floor, evidence linkage non-sentinel, captured_at within envelope skew. |
+| 7   | `07-risk/`            | **T-410 (live)** | Named-factor risk score, HITL routing signal, RISK_EXCEPTION_THRESHOLD gate.                                   |
 | 8   | `08-human-review/`    | T-411            | HITL routing; reviewer claim/decision.                                                                         |
 | 9   | `09-audit/`           | T-411            | Lineage emission.                                                                                              |
 | 10  | `10-certification/`   | T-411            | Final gate — all required layers passed or approved exception.                                                 |
@@ -86,6 +86,38 @@ L5 defers to L4 on missing entities — when `getSensorById` returns null, L5 pa
 
 Test helper: `InMemoryReferenceDataClient({ sensors, airports })` lives in `src/reference/client.ts` and is the seed for the unit tests. A `RestReferenceDataClient` that points at the running `reference-data` service is intentionally deferred to a later ticket — the engine ↔ reference-data wiring (timeouts, retries, caching) is its own concern; the layers stay testable via the interface alone.
 
+### Layer 6 — AI Output Sanity (live)
+
+`createAiOutputSanityLayer({ minConfidence, maxCaptureSkewMs })`. Defaults: `minConfidence=0.4` (matches the FOD detector's `min_publish_threshold` in `docs/validation/risk-scoring.md`), `maxCaptureSkewMs=300000` (5 min). Applies to AI detections only — sensor frames pass unconditionally.
+
+| Rule                                                                             | Failure code                 |
+| -------------------------------------------------------------------------------- | ---------------------------- |
+| `bbox.x + bbox.w ≤ 1` and `bbox.y + bbox.h ≤ 1` (extent inside normalized image) | `BBOX_EXTENT_OUT_OF_IMAGE`   |
+| `payload.confidence ≥ minConfidence`                                             | `CONFIDENCE_BELOW_MIN`       |
+| `detection_id` isn't a sentinel like `"unknown"`/`"n/a"`                         | `EVIDENCE_LINKAGE_BLANK`     |
+| `detection_id` / `frame_id` / `sensor_id` are not the same value                 | `EVIDENCE_LINKAGE_DUPLICATE` |
+| `payload.captured_at ≤ envelope.timestamp`                                       | `CAPTURED_AT_AFTER_ENVELOPE` |
+| `envelope.timestamp - payload.captured_at ≤ maxCaptureSkewMs`                    | `CAPTURE_SKEW_EXCEEDS_MAX`   |
+
+### Layer 7 — Risk & Exception Scoring (live)
+
+L7 doesn't reject the way L1–L6 do. It computes a transparent named-factor risk score and surfaces it on `details.risk` — `{score, factors, routes_to_hitl}`. L8 (T-411) reads `routes_to_hitl` as the HITL gate; the audit trail (T-412) records the breakdown so postmortems can answer "why was this routed?"
+
+`createRiskScoringLayer({ hitlScoreThreshold, exceptionScoreThreshold, freshnessSpanMs, now })`. Defaults: HITL=0.6, exception=0.95, freshness span=1h.
+
+**Factors (weights sum to 1.0):**
+
+| Factor                  | Weight | Higher = riskier when…                      |
+| ----------------------- | ------ | ------------------------------------------- |
+| `confidence_gap`        | 0.30   | `1 - confidence` — low confidence raises it |
+| `freshness`             | 0.20   | age vs `freshnessSpanMs` (capped at 1.0)    |
+| `severity_weight`       | 0.30   | `critical=1, high=0.75, …, info=0`          |
+| `prior_failure_density` | 0.20   | failed previous layers / 5 (capped at 1.0)  |
+
+**Exception path.** When `score ≥ exceptionScoreThreshold` (default 0.95) the layer fails with `RISK_EXCEPTION_THRESHOLD`. Rare by construction — every named factor maxed at once. The full risk report still rides on `details.risk` so the audit trail captures the breakdown.
+
+Sensor frames and malformed inputs pass L7 — no risk model applies.
+
 ## Endpoints
 
 | Method | Path        | Returns                                         |
@@ -94,7 +126,7 @@ Test helper: `InMemoryReferenceDataClient({ sensors, airports })` lives in `src/
 | GET    | `/ready`    | 200 ready                                       |
 | POST   | `/validate` | `{ run_id, layers: [...], certified: boolean }` |
 
-`POST /validate` accepts `{ submission_id, payload }` and runs the configured layer list. The HTTP layer parses the body via `ValidationSubmissionRequest` from `@aip/shared-contracts`. L1 → L5 are live (T-406 → T-409). The remaining layers (L6 → L10) are stubs returning `passed: true`; T-410 + T-411 replace them with real per-domain logic.
+`POST /validate` accepts `{ submission_id, payload }` and runs the configured layer list. The HTTP layer parses the body via `ValidationSubmissionRequest` from `@aip/shared-contracts`. L1 → L7 are live (T-406 → T-410). L8 → L10 are stubs returning `passed: true`; T-411 replaces them with real HITL routing + audit emission + certification logic.
 
 Three Prometheus metrics are exposed on `GET /metrics`:
 
