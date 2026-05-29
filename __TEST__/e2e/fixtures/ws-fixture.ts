@@ -144,3 +144,41 @@ export function presenceSnapshot(opts: { airportId: string; count?: number }) {
     },
   };
 }
+
+/**
+ * AI detection envelope as it lands on the WS broadcaster after the
+ * outbox/bridge round-trip. Mirrors `AiDetectionMessage` in
+ * `apps/web/types/ws.ts`; the frontend decoder validates the same
+ * shape we send here, so a contract drift fails the e2e immediately.
+ */
+export function aiDetection(opts: {
+  airportId: string;
+  sensorId: string;
+  eventId: string;
+  detectionId: string;
+  frameId: string;
+  detectionClass: "fod" | "crack" | "snowbank" | "wildlife" | "anomaly";
+  confidence: number;
+  severityHint: "critical" | "high" | "medium" | "low" | "info";
+  bbox?: { x: number; y: number; w: number; h: number };
+  capturedAt?: string;
+}) {
+  const captured = opts.capturedAt ?? new Date().toISOString();
+  return {
+    type: `ai.detection.${opts.detectionClass}.emitted`,
+    schema_version: "v1",
+    timestamp: captured,
+    last_event_id: opts.eventId,
+    payload: {
+      detection_id: opts.detectionId,
+      sensor_id: opts.sensorId,
+      frame_id: opts.frameId,
+      detection_class: opts.detectionClass,
+      confidence: opts.confidence,
+      severity_hint: opts.severityHint,
+      ...(opts.bbox ? { bbox: opts.bbox } : {}),
+      captured_at: captured,
+      geo: { lat: 37.6213, lng: -122.379, alt_m: 4 },
+    },
+  };
+}

@@ -23,6 +23,13 @@ export const AlertItem = z.object({
   sensor_id: z.string().optional(),
   airport_id: z.string().uuid(),
   received_at: z.string().datetime(),
+  /**
+   * Set on AI detections whose calibrated confidence fell below the
+   * "low confidence" threshold — typically the T-306 weather-degraded
+   * scenario. The AlertRow renders a "LOW CONF" badge so operators
+   * see the event but treat it as needs-review rather than actionable.
+   */
+  low_confidence: z.boolean().optional(),
 });
 export type AlertItem = z.infer<typeof AlertItem>;
 
