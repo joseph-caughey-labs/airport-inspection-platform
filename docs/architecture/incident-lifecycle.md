@@ -77,6 +77,40 @@ Two typed errors are thrown by the state machine:
 
 Both carry `code` (`ILLEGAL_TRANSITION`, `TERMINAL_STATE`) so the HTTP layer doesn't need to instanceof-check.
 
+## Live transition endpoints
+
+| Endpoint                             | Command          | Ticket | Status                                            |
+| ------------------------------------ | ---------------- | ------ | ------------------------------------------------- |
+| `POST /incidents/:id/acknowledge`    | `acknowledge`    | T-403  | **live** — operator UI calls it via `IncidentApi` |
+| `POST /incidents/:id/assign`         | `assign`         | T-404  | planned                                           |
+| `POST /incidents/:id/start_progress` | `start_progress` | T-404  | planned                                           |
+| `POST /incidents/:id/resolve`        | `resolve`        | T-404  | planned                                           |
+| `POST /incidents/:id/escalate`       | `escalate`       | T-404  | planned                                           |
+| `POST /incidents/:id/archive`        | `archive`        | T-404  | planned                                           |
+| `POST /incidents/:id/reject`         | `reject`         | T-404  | planned                                           |
+
+### `POST /incidents/:id/acknowledge` (T-403)
+
+Body: `AcknowledgeIncidentRequest` = `{ operator_id: uuid, note?: string }`.
+
+On success the route:
+
+1. `Incident.dispatch({ command: "acknowledge", actor: operator_id, reason: note })` — pure state-machine call, throws `IllegalTransitionError` / `TerminalStateError` on bad input.
+2. Persists the next aggregate via `IncidentRepository.save()` with `acknowledged_by` and `acknowledged_at` denormalized onto the envelope so the operator UI can render the actor without joining the history.
+3. Publishes the `IncidentTransitionedEvent` via `IncidentEventPublisher.emit()` on the `incident.transition.acknowledged` channel. The `note` is threaded into `transition.reason` for the audit trail.
+
+**Publish failure is decoupled from persistence.** If Redis is offline the persisted transition stands and the route still returns 200 — at-least-once delivery to audit/notification consumers comes from the outbox in a later ticket, not from rolling back the operator's action. This was an explicit decision: a flap on the message bus should never block an operator from acknowledging an active runway incident.
+
+Error mapping:
+
+| HTTP | Error code           | Trigger                                                |
+| ---- | -------------------- | ------------------------------------------------------ |
+| 400  | `INVALID_ID`         | Path `:id` is not a UUID.                              |
+| 400  | `VALIDATION`         | Body fails the `AcknowledgeIncidentRequest` zod parse. |
+| 404  | `INCIDENT_NOT_FOUND` | Repository returned `null` for `:id`.                  |
+| 409  | `ILLEGAL_TRANSITION` | Incident is past `new` (e.g. already acknowledged).    |
+| 410  | `TERMINAL_STATE`     | Incident is `archived` or `rejected`.                  |
+
 ## Domain events
 
 Every successful `dispatch()` produces an `IncidentTransitionedEvent` and surfaces it on the Redis channel `incident.transition.<next_state>`. Two consumers in Phase 4:

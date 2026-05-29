@@ -336,18 +336,30 @@ importers:
       '@aip/logger':
         specifier: workspace:*
         version: link:../../packages/logger
+      '@aip/metrics':
+        specifier: workspace:*
+        version: link:../../packages/metrics
       '@aip/postgres-client':
         specifier: workspace:*
         version: link:../../packages/postgres-client
+      '@aip/redis-client':
+        specifier: workspace:*
+        version: link:../../packages/redis-client
       '@aip/shared-contracts':
         specifier: workspace:*
         version: link:../../packages/shared-contracts
       fastify:
         specifier: ^5.0.0
         version: 5.8.5
+      ioredis:
+        specifier: ^5.4.1
+        version: 5.11.0
       pg:
         specifier: ^8.13.0
         version: 8.21.0
+      prom-client:
+        specifier: ^15.1.3
+        version: 15.1.3
     devDependencies:
       '@types/node':
         specifier: ^22.7.5

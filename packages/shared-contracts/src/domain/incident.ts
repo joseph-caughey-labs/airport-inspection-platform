@@ -64,3 +64,18 @@ export const ListIncidentsQuery = z.object({
   created_before: z.string().datetime().optional(),
 });
 export type ListIncidentsQuery = z.infer<typeof ListIncidentsQuery>;
+
+/**
+ * Request body for `POST /incidents/:id/acknowledge` (T-403).
+ *
+ * - `operator_id`: the user uuid taking responsibility for triage.
+ *   Required — every transition needs an actor in the audit trail.
+ * - `note`: optional short context the operator types in the UI
+ *   (e.g. "tower confirmed visual on FOD"). Stored on the
+ *   transition record; surfaced in the audit log later.
+ */
+export const AcknowledgeIncidentRequest = z.object({
+  operator_id: z.string().uuid(),
+  note: z.string().min(1).max(500).optional(),
+});
+export type AcknowledgeIncidentRequest = z.infer<typeof AcknowledgeIncidentRequest>;
