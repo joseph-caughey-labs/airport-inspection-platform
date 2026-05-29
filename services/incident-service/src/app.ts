@@ -1,6 +1,7 @@
 import { type Logger } from "@aip/logger";
 import { checkHealth, type PgPool } from "@aip/postgres-client";
 import Fastify from "fastify";
+import type { IncidentEventPublisher } from "./events/index.js";
 import { InMemoryIncidentRepository, type IncidentRepository } from "./repository/index.js";
 import { registerIncidentRoutes } from "./routes/incidents.js";
 
@@ -16,9 +17,16 @@ export interface BuildAppOptions {
    * envelope shape.
    */
   repository?: IncidentRepository;
+  /**
+   * Domain event publisher. The production path wires
+   * `RedisIncidentEventPublisher`; tests typically pass
+   * `RecordingIncidentEventPublisher` or omit it entirely (the route
+   * accepts an undefined publisher and skips event emission).
+   */
+  events?: IncidentEventPublisher;
 }
 
-export async function buildApp({ logger, pool, repository }: BuildAppOptions) {
+export async function buildApp({ logger, pool, repository, events }: BuildAppOptions) {
   const app = Fastify({
     logger: { level: logger.level },
     disableRequestLogging: false,
@@ -39,7 +47,7 @@ export async function buildApp({ logger, pool, repository }: BuildAppOptions) {
     return { status: "ready", latency_ms: health.latency_ms };
   });
 
-  registerIncidentRoutes(app, { repository: repo });
+  registerIncidentRoutes(app, { repository: repo, events });
 
   return app;
 }
