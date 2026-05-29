@@ -4,18 +4,18 @@ The Parity 10-layer validation pipeline. Architecture is locked by [ADR 0008](..
 
 ## The 10 layers
 
-| #   | Folder                | Lands in         | Purpose                                                                                |
-| --- | --------------------- | ---------------- | -------------------------------------------------------------------------------------- |
-| 1   | `01-input/`           | **T-406 (live)** | Envelope shape, required fields, UUID + ISO-8601 format, timestamp window, geo bounds. |
-| 2   | `02-schema/`          | T-407            | DTO/event schema conformance, versions, enums.                                         |
-| 3   | `03-business-rules/`  | T-408            | Severity-by-location, SOP thresholds.                                                  |
-| 4   | `04-source-of-truth/` | T-409            | Cross-check against `reference-data`.                                                  |
-| 5   | `05-cross-system/`    | T-409            | Consistency across DB, cache, derived views.                                           |
-| 6   | `06-ai-output/`       | T-410            | Bbox sanity, confidence ≥ threshold, evidence linkage.                                 |
-| 7   | `07-risk/`            | T-410            | Named-factor risk score; threshold gating.                                             |
-| 8   | `08-human-review/`    | T-411            | HITL routing; reviewer claim/decision.                                                 |
-| 9   | `09-audit/`           | T-411            | Lineage emission.                                                                      |
-| 10  | `10-certification/`   | T-411            | Final gate — all required layers passed or approved exception.                         |
+| #   | Folder                | Lands in         | Purpose                                                                                              |
+| --- | --------------------- | ---------------- | ---------------------------------------------------------------------------------------------------- |
+| 1   | `01-input/`           | **T-406 (live)** | Envelope shape, required fields, UUID + ISO-8601 format, timestamp window, geo bounds.               |
+| 2   | `02-schema/`          | **T-407 (live)** | DTO/event schema conformance (zod), `schema_version` allowlist, event-type-specific payload schemas. |
+| 3   | `03-business-rules/`  | T-408            | Severity-by-location, SOP thresholds.                                                                |
+| 4   | `04-source-of-truth/` | T-409            | Cross-check against `reference-data`.                                                                |
+| 5   | `05-cross-system/`    | T-409            | Consistency across DB, cache, derived views.                                                         |
+| 6   | `06-ai-output/`       | T-410            | Bbox sanity, confidence ≥ threshold, evidence linkage.                                               |
+| 7   | `07-risk/`            | T-410            | Named-factor risk score; threshold gating.                                                           |
+| 8   | `08-human-review/`    | T-411            | HITL routing; reviewer claim/decision.                                                               |
+| 9   | `09-audit/`           | T-411            | Lineage emission.                                                                                    |
+| 10  | `10-certification/`   | T-411            | Final gate — all required layers passed or approved exception.                                       |
 
 ### Layer 1 — Input Validation (live)
 
@@ -34,6 +34,21 @@ Configurable via `createInputValidationLayer({ now, maxFutureSkewMs, maxPastSkew
 | `PAYLOAD_NOT_OBJECT`                                               | `payload` is missing or not an object.               |
 | `GEO_NOT_OBJECT` / `GEO_LAT_OUT_OF_RANGE` / `GEO_LNG_OUT_OF_RANGE` | `payload.geo` malformed or out of range.             |
 
+### Layer 2 — Schema & Contract Validation (live)
+
+Configurable via `createSchemaValidationLayer({ supportedSchemaVersions })`. Default `["v1"]`. L2 runs three checks in one pass and surfaces every failure in `details.failures`:
+
+1. **Envelope zod parse** against `EventEnvelope` from `@aip/shared-contracts` (catches `schema_version` regex, `source.service` presence, `idempotency_key` length, etc.). Failures get code prefix `ENVELOPE_SCHEMA__`.
+2. **`schema_version` allowlist.** A publisher that forward-bumps without a corresponding engine release fails fast with `UNSUPPORTED_SCHEMA_VERSION` rather than confusing payload-schema failures further down.
+3. **Payload schema by `event_type`**:
+   - `sensor.frame.captured` → `SensorFramePayload` (from shared-contracts)
+   - `ai.detection.<class>.emitted` → `AiDetectionPayload` (local wire-format schema in `02-schema/payload-schemas.ts` — see note below)
+   - anything else → `UNSUPPORTED_EVENT_TYPE`
+
+Payload failures carry `AI_DETECTION_PAYLOAD__<zod_code>` or `SENSOR_FRAME_PAYLOAD__<zod_code>` so dashboards can group regressions per event family.
+
+**Note on the AI detection wire schema.** The TS `DetectionClass` enum in `@aip/shared-contracts/enums` uses long names (`pavement_crack`, `snowbank_violation`, `surface_anomaly`) but the Python AI publisher emits the short names (`crack`, `snowbank`, `anomaly`). L2 validates the wire format that actually flows, so the validator-side schema mirrors the publisher in `services/ai-inference/src/models/events.py`. Reconciling the TS enum with the wire format is its own ticket.
+
 ## Endpoints
 
 | Method | Path        | Returns                                         |
@@ -42,7 +57,7 @@ Configurable via `createInputValidationLayer({ now, maxFutureSkewMs, maxPastSkew
 | GET    | `/ready`    | 200 ready                                       |
 | POST   | `/validate` | `{ run_id, layers: [...], certified: boolean }` |
 
-`POST /validate` accepts `{ submission_id, payload }` and runs the configured layer list. The HTTP layer parses the body via `ValidationSubmissionRequest` from `@aip/shared-contracts`. Layer 1 (Input Validation) is live as of T-406 — production runs reject malformed envelopes before reaching L2. The remaining nine layers are still stubs returning `passed: true`; T-407+ replaces them with real per-domain logic.
+`POST /validate` accepts `{ submission_id, payload }` and runs the configured layer list. The HTTP layer parses the body via `ValidationSubmissionRequest` from `@aip/shared-contracts`. L1 (T-406) and L2 (T-407) are live — production runs reject malformed envelopes and schema-violating payloads before reaching L3. The remaining layers are still stubs returning `passed: true`; T-408+ replaces them with real per-domain logic.
 
 Three Prometheus metrics are exposed on `GET /metrics`:
 

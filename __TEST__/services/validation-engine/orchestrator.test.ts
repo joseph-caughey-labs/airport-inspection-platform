@@ -25,7 +25,15 @@ function validInput(): unknown {
     schema_version: "v1",
     source: { service: "test" },
     timestamp: new Date().toISOString(),
-    payload: { sensor_id: "CAM-N-03", detection_class: "fod", confidence: 0.5 },
+    payload: {
+      detection_id: "det-001",
+      sensor_id: "CAM-N-03",
+      frame_id: "frame-abc",
+      detection_class: "fod",
+      confidence: 0.5,
+      severity_hint: "high",
+      captured_at: new Date().toISOString(),
+    },
   };
 }
 
