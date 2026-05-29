@@ -2,6 +2,7 @@ import { createLogger } from "@aip/logger";
 import { createRegistry } from "@aip/metrics";
 import { createPgPool } from "@aip/postgres-client";
 import { createRedis } from "@aip/redis-client";
+import { AiDetectionBridge } from "./ai-detections/index.js";
 import { buildApp } from "./app.js";
 import { ConsumerOrchestrator, RedisSubscriber } from "./consumers/index.js";
 import { DedupStore, withIdempotencyDedup } from "./dedup/index.js";
@@ -12,12 +13,21 @@ async function main(): Promise<void> {
   const logger = createLogger({ service: "event-pipeline" });
   const registry = createRegistry({ service: "event-pipeline" });
 
-  // ── Two Redis clients: pub/sub requires a dedicated subscriber. ──
+  // ── Redis clients ────────────────────────────────────────────────
+  // Three clients on purpose:
+  //   - `redis` is the publish/cmd path (used by the outbox worker).
+  //   - `redisSubscriber` owns the sensor-frame channel subscription.
+  //   - `redisAiSubscriber` owns the AI-detection pattern subscription
+  //     (ioredis forbids mixing patterns with command traffic).
   const redis = createRedis({
     host: process.env["REDIS_HOST"] ?? "redis",
     port: Number(process.env["REDIS_PORT"] ?? 6379),
   });
   const redisSubscriber = createRedis({
+    host: process.env["REDIS_HOST"] ?? "redis",
+    port: Number(process.env["REDIS_PORT"] ?? 6379),
+  });
+  const redisAiSubscriber = createRedis({
     host: process.env["REDIS_HOST"] ?? "redis",
     port: Number(process.env["REDIS_PORT"] ?? 6379),
   });
@@ -77,6 +87,23 @@ async function main(): Promise<void> {
     batchSize: Number(process.env["OUTBOX_BATCH_SIZE"] ?? 100),
   });
 
+  // ── AI detection bridge (T-310) ──────────────────────────────────
+  // psubscribes to ai.detection.*.emitted and forwards each event into
+  // the broadcast outbox so the operator dashboard sees AI detections
+  // alongside sensor frames.
+  const defaultAirportId = process.env["DEFAULT_AIRPORT_ID"] ?? "";
+  const aiDetectionBridge = defaultAirportId
+    ? new AiDetectionBridge({
+        redis: redisAiSubscriber,
+        pool,
+        logger,
+        registry,
+        broadcastChannelPrefix: process.env["BROADCAST_CHANNEL_PREFIX"] ?? "events.broadcast",
+        defaultAirportId,
+        pattern: process.env["AI_DETECTION_PATTERN"] ?? "ai.detection.*.emitted",
+      })
+    : undefined;
+
   const app = await buildApp({ logger, redis, pool, registry });
   const port = Number(process.env["PORT"] ?? 3004);
   await app.listen({ port, host: "0.0.0.0" });
@@ -84,6 +111,12 @@ async function main(): Promise<void> {
   if (process.env["CONSUMERS_DISABLED"] !== "true") {
     await subscriber.start();
     outboxWorker.start();
+    if (aiDetectionBridge) {
+      await aiDetectionBridge.start();
+      logger.info("ai-detection bridge started");
+    } else {
+      logger.warn("DEFAULT_AIRPORT_ID unset — ai-detection bridge not started");
+    }
     logger.info("event-pipeline consumers + outbox worker started");
   } else {
     logger.warn("consumers disabled via CONSUMERS_DISABLED");
@@ -93,11 +126,13 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.warn({ signal }, "shutting down");
+    if (aiDetectionBridge) await aiDetectionBridge.stop();
     await outboxWorker.stop();
     await subscriber.stop();
     await app.close();
     redis.disconnect();
     redisSubscriber.disconnect();
+    redisAiSubscriber.disconnect();
     await pool.end();
     process.exit(0);
   };

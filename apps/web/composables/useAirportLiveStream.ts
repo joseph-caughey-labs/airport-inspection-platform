@@ -2,13 +2,16 @@ import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
 import { useAlertsStore } from "~/stores/alerts";
 import { usePresenceStore } from "~/stores/presence";
 import { useSystemStore } from "~/stores/system";
-import { alertFromSensorFrame } from "~/utils/ws-decoder";
+import { alertFromDetection, alertFromSensorFrame } from "~/utils/ws-decoder";
+import type { AiDetectionMessage } from "~/types/ws";
 import { WsClient, type WsConnectionState } from "./useWebSocket";
 
 export interface UseAirportLiveStreamOptions {
   airportId: string;
   /** Called on each sensor frame so the map can pulse the marker. */
   onSensorFrame?: (sensorId: string) => void;
+  /** Called on each AI detection so the map can overlay a bbox (future). */
+  onDetection?: (detection: AiDetectionMessage) => void;
   /** Override the URL builder (tests). */
   buildUrl?: (airportId: string) => string;
 }
@@ -75,10 +78,16 @@ export function useAirportLiveStream(opts: UseAirportLiveStreamOptions) {
         if (s === "reconnecting") alerts.noteReconnect();
       },
       onFrame(result) {
+        if (result.kind === "parse_error") {
+          alerts.setFeedState("error", result.reason);
+          return;
+        }
+        if (result.kind === "detection") {
+          alerts.push(alertFromDetection(result.message, opts.airportId, result.message.timestamp));
+          opts.onDetection?.(result.message);
+          return;
+        }
         if (result.kind !== "message") {
-          if (result.kind === "parse_error") {
-            alerts.setFeedState("error", result.reason);
-          }
           return;
         }
         const msg = result.message;
