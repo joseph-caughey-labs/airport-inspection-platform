@@ -17,10 +17,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 from prometheus_client.metrics_core import GaugeMetricFamily
+from pydantic import BaseModel, Field
 
 from .confidence import (
     CalibrationConfig,
@@ -37,8 +38,14 @@ from .detectors import (
     load_snowbank_thresholds,
     load_wildlife_thresholds,
 )
+from .fallback import RuntimeModeController
 from .pipeline import AiRuntime, RuntimeConfig
 from .redis_client import check_health, create_redis
+
+
+class _GpuStateRequest(BaseModel):
+    mode: str = Field(pattern=r"^(gpu|cpu_fallback)$")
+    reason: str = Field(min_length=1, max_length=200)
 
 
 def _default_calibrator() -> Calibrator:
@@ -120,12 +127,16 @@ def build_app(
     detector_registry: DetectorRegistry | None = None,
     config: RuntimeConfig | None = None,
     calibrator: Calibrator | None = None,
+    mode_controller: RuntimeModeController | None = None,
 ) -> FastAPI:
     client = redis_client if redis_client is not None else create_redis()
     cfg = config if config is not None else RuntimeConfig.from_env()
     registry = detector_registry if detector_registry is not None else _default_registry(cfg)
     cal = calibrator if calibrator is not None else _default_calibrator()
-    runtime = AiRuntime(redis=client, registry=registry, config=cfg, calibrator=cal)
+    mc = mode_controller if mode_controller is not None else RuntimeModeController()
+    runtime = AiRuntime(
+        redis=client, registry=registry, config=cfg, calibrator=cal, mode_controller=mc
+    )
     logger = logging.getLogger("ai-inference.app")
 
     @asynccontextmanager
@@ -178,6 +189,27 @@ def build_app(
             content=generate_latest(metrics_registry),
             media_type=CONTENT_TYPE_LATEST,
         )
+
+    # Admin: GPU/CPU-fallback mode control (T-308).
+    # Returns the runtime mode controller's snapshot; POST toggles
+    # the mode. Production deployments gate this behind the operator
+    # role (T-504); the demo runs it unauthenticated for clarity.
+    @app.get("/admin/gpu-state")
+    async def gpu_state() -> JSONResponse:
+        return JSONResponse(content=runtime.mode_controller.snapshot())
+
+    @app.post("/admin/gpu-state")
+    async def set_gpu_state(body: _GpuStateRequest) -> JSONResponse:
+        try:
+            changed = await runtime.mode_controller.set_mode(
+                body.mode,  # type: ignore[arg-type]
+                body.reason,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        snapshot = runtime.mode_controller.snapshot()
+        snapshot["changed"] = changed
+        return JSONResponse(content=snapshot)
 
     logger.debug("build_app complete: detectors=%s", registry.names())
     return app

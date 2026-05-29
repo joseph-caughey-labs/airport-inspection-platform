@@ -28,6 +28,7 @@ import redis.asyncio as redis_async
 from ..confidence import Calibrator
 from ..consumers import FrameConsumer
 from ..detectors import DetectorRegistry
+from ..fallback import RuntimeModeController
 from ..models import DetectionPayload, SensorFrameEvent
 from ..publishers import DetectionPublisher
 from .batch import BatchContext, BatchScheduler
@@ -59,10 +60,15 @@ class AiRuntime:
         registry: DetectorRegistry,
         config: RuntimeConfig,
         calibrator: Calibrator | None = None,
+        mode_controller: RuntimeModeController | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
         self._config = config
         self._logger = logger or logging.getLogger("ai-inference.runtime")
+        # Mode controller — defaults to GPU mode with no latency simulation.
+        # Tests construct one with simulate_latency=True if they want
+        # to assert on per-emit latency.
+        self.mode_controller = mode_controller or RuntimeModeController(logger=self._logger)
         self.orchestrator = DetectorOrchestrator(
             registry=registry,
             parallel=config.parallel_detectors,
@@ -135,10 +141,16 @@ class AiRuntime:
             if calibrated is None:
                 self.counters.detections_dropped_by_calibration += 1
                 continue
+            # Read mode at emit time (not at consume time) so a
+            # mid-batch flip cleanly affects subsequent emissions.
+            profile = self.mode_controller.profile
+            meta = dict(calibrated.metadata)
+            meta["mode"] = profile.name
+            meta["mode_latency_ms"] = profile.simulate_latency_ms
             if batch_id is not None:
-                meta = dict(calibrated.metadata)
                 meta["batch"] = {"id": batch_id}
-                calibrated = calibrated.model_copy(update={"metadata": meta})
+            calibrated = calibrated.model_copy(update={"metadata": meta})
+            await self.mode_controller.apply_latency()
             # Correlation propagation: detection events carry the same
             # correlation_id as the inbound frame so the audit trail
             # is threadable end-to-end.
