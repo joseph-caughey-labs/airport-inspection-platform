@@ -79,3 +79,63 @@ export const AcknowledgeIncidentRequest = z.object({
   note: z.string().min(1).max(500).optional(),
 });
 export type AcknowledgeIncidentRequest = z.infer<typeof AcknowledgeIncidentRequest>;
+
+/**
+ * Request bodies for the remaining lifecycle commands (T-404).
+ *
+ * Every transition needs an `operator_id` so the audit trail can name
+ * an actor. Beyond that, each command has its own contract:
+ *
+ *   - `assign`         → needs `assignee_id` (the responder being
+ *                        routed to). `note` is optional context.
+ *   - `start_progress` → no extra fields; the actor is the assignee
+ *                        beginning work.
+ *   - `resolve`        → `resolution_summary` is REQUIRED — operators
+ *                        must explain how the incident was closed for
+ *                        the post-incident review.
+ *   - `escalate`       → `reason` is REQUIRED. Time-in-state /
+ *                        severity-driven auto-escalations populate
+ *                        this with the trigger ("sla_breach",
+ *                        "severity_override", etc).
+ *   - `archive`        → `note` optional; usually called by an
+ *                        end-of-day sweep, not an operator typing.
+ *   - `reject`         → `reason` is REQUIRED — most rejections come
+ *                        from the validation engine (T-405) with the
+ *                        failing layer name.
+ */
+export const AssignIncidentRequest = z.object({
+  operator_id: z.string().uuid(),
+  assignee_id: z.string().uuid(),
+  note: z.string().min(1).max(500).optional(),
+});
+export type AssignIncidentRequest = z.infer<typeof AssignIncidentRequest>;
+
+export const StartProgressIncidentRequest = z.object({
+  operator_id: z.string().uuid(),
+  note: z.string().min(1).max(500).optional(),
+});
+export type StartProgressIncidentRequest = z.infer<typeof StartProgressIncidentRequest>;
+
+export const ResolveIncidentRequest = z.object({
+  operator_id: z.string().uuid(),
+  resolution_summary: z.string().min(1).max(2000),
+});
+export type ResolveIncidentRequest = z.infer<typeof ResolveIncidentRequest>;
+
+export const EscalateIncidentRequest = z.object({
+  operator_id: z.string().uuid(),
+  reason: z.string().min(1).max(500),
+});
+export type EscalateIncidentRequest = z.infer<typeof EscalateIncidentRequest>;
+
+export const ArchiveIncidentRequest = z.object({
+  operator_id: z.string().uuid(),
+  note: z.string().min(1).max(500).optional(),
+});
+export type ArchiveIncidentRequest = z.infer<typeof ArchiveIncidentRequest>;
+
+export const RejectIncidentRequest = z.object({
+  operator_id: z.string().uuid(),
+  reason: z.string().min(1).max(500),
+});
+export type RejectIncidentRequest = z.infer<typeof RejectIncidentRequest>;

@@ -79,15 +79,34 @@ Both carry `code` (`ILLEGAL_TRANSITION`, `TERMINAL_STATE`) so the HTTP layer doe
 
 ## Live transition endpoints
 
-| Endpoint                             | Command          | Ticket | Status                                            |
-| ------------------------------------ | ---------------- | ------ | ------------------------------------------------- |
-| `POST /incidents/:id/acknowledge`    | `acknowledge`    | T-403  | **live** — operator UI calls it via `IncidentApi` |
-| `POST /incidents/:id/assign`         | `assign`         | T-404  | planned                                           |
-| `POST /incidents/:id/start_progress` | `start_progress` | T-404  | planned                                           |
-| `POST /incidents/:id/resolve`        | `resolve`        | T-404  | planned                                           |
-| `POST /incidents/:id/escalate`       | `escalate`       | T-404  | planned                                           |
-| `POST /incidents/:id/archive`        | `archive`        | T-404  | planned                                           |
-| `POST /incidents/:id/reject`         | `reject`         | T-404  | planned                                           |
+All seven transition routes are live as of T-404. They share one
+helper (`registerTransitionRoute` in
+`services/incident-service/src/routes/incidents.ts`) so the canonical
+pattern — validate path uuid → parse body → load → dispatch via state
+machine → persist with denormalized fields → publish — is implemented
+in exactly one place. Each route differs only in:
+
+1. **Body schema** — the required actor / reason / assignee fields.
+2. **Denormalized envelope fields** — which top-level columns the
+   transition stamps onto the persisted incident (e.g. `assigned_to`
+   after `assign`, `resolved_at` after `resolve`).
+
+| Endpoint                             | Command          | Body                                  | Denormalizes                         | Channel                            |
+| ------------------------------------ | ---------------- | ------------------------------------- | ------------------------------------ | ---------------------------------- |
+| `POST /incidents/:id/acknowledge`    | `acknowledge`    | `operator_id`, `note?`                | `acknowledged_by`, `acknowledged_at` | `incident.transition.acknowledged` |
+| `POST /incidents/:id/assign`         | `assign`         | `operator_id`, `assignee_id`, `note?` | `assigned_to`                        | `incident.transition.assigned`     |
+| `POST /incidents/:id/start_progress` | `start_progress` | `operator_id`, `note?`                | —                                    | `incident.transition.in_progress`  |
+| `POST /incidents/:id/resolve`        | `resolve`        | `operator_id`, `resolution_summary`   | `resolved_at`                        | `incident.transition.resolved`     |
+| `POST /incidents/:id/escalate`       | `escalate`       | `operator_id`, `reason`               | —                                    | `incident.transition.escalated`    |
+| `POST /incidents/:id/archive`        | `archive`        | `operator_id`, `note?`                | —                                    | `incident.transition.archived`     |
+| `POST /incidents/:id/reject`         | `reject`         | `operator_id`, `reason`               | —                                    | `incident.transition.rejected`     |
+
+**Required vs optional bodies are a domain decision.** `resolve`
+demands `resolution_summary` because the post-incident review needs
+it; `escalate` and `reject` demand `reason` because the validation
+engine + SLA timers populate it with the trigger label (`sla_breach`,
+`layer3_false_positive`). Acknowledge / assign / start_progress /
+archive treat the operator note as optional context.
 
 ### `POST /incidents/:id/acknowledge` (T-403)
 

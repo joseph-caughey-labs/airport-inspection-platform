@@ -23,9 +23,12 @@ servers:
 tags:
   - name: incidents
     description: |
-      Incident lifecycle CRUD + transition commands. The acknowledge
-      command (T-403) is live; remaining commands
-      (assign/start/resolve/escalate/archive/reject) land in T-404.
+      Incident lifecycle CRUD + the seven transition commands
+      (acknowledge / assign / start_progress / resolve / escalate /
+      archive / reject). Every transition emits an
+      `incident.transitioned` event on
+      `incident.transition.<next_state>` for the audit + notification
+      services.
 
 paths:
   /incidents:
@@ -191,11 +194,165 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /incidents/{id}/assign:
+    post:
+      tags: [incidents]
+      summary: Assign an incident to a responder
+      description: |
+        Transitions `acknowledged` → `assigned`. Denormalizes
+        `assigned_to` (the responder UUID) onto the envelope. Emits on
+        `incident.transition.assigned`.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssignIncidentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/IncidentEnvelope" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/IncidentNotFound" }
+        "409": { $ref: "#/components/responses/IllegalTransition" }
+        "410": { $ref: "#/components/responses/TerminalState" }
+  /incidents/{id}/start_progress:
+    post:
+      tags: [incidents]
+      summary: Mark an assigned incident as in_progress
+      description: |
+        Transitions `assigned` → `in_progress`. Responder calls this
+        when they begin work. Emits on `incident.transition.in_progress`.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StartProgressIncidentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/IncidentEnvelope" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/IncidentNotFound" }
+        "409": { $ref: "#/components/responses/IllegalTransition" }
+        "410": { $ref: "#/components/responses/TerminalState" }
+  /incidents/{id}/resolve:
+    post:
+      tags: [incidents]
+      summary: Resolve an in_progress (or escalated) incident
+      description: |
+        Transitions `in_progress | escalated` → `resolved`. The
+        `resolution_summary` is REQUIRED — operators must record how
+        the incident was closed for the post-incident review.
+        Denormalizes `resolved_at`. Emits on
+        `incident.transition.resolved`.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResolveIncidentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/IncidentEnvelope" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/IncidentNotFound" }
+        "409": { $ref: "#/components/responses/IllegalTransition" }
+        "410": { $ref: "#/components/responses/TerminalState" }
+  /incidents/{id}/escalate:
+    post:
+      tags: [incidents]
+      summary: Escalate an active incident
+      description: |
+        Side-entry from any active state (`new`, `acknowledged`,
+        `assigned`, `in_progress`) → `escalated`. `reason` is REQUIRED
+        — SLA / severity-driven auto-escalations populate it with the
+        trigger label. Emits on `incident.transition.escalated`.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EscalateIncidentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/IncidentEnvelope" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/IncidentNotFound" }
+        "409": { $ref: "#/components/responses/IllegalTransition" }
+        "410": { $ref: "#/components/responses/TerminalState" }
+  /incidents/{id}/archive:
+    post:
+      tags: [incidents]
+      summary: Archive a resolved incident
+      description: |
+        Transitions `resolved` → `archived` (terminal). Removes the
+        incident from the active operator queue while preserving it
+        for audit. Emits on `incident.transition.archived`.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ArchiveIncidentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/IncidentEnvelope" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/IncidentNotFound" }
+        "409": { $ref: "#/components/responses/IllegalTransition" }
+        "410": { $ref: "#/components/responses/TerminalState" }
+  /incidents/{id}/reject:
+    post:
+      tags: [incidents]
+      summary: Reject an incident as a false positive
+      description: |
+        Transitions any non-terminal state → `rejected` (terminal).
+        Validation engine (T-405) is the primary caller — `reason`
+        carries the failing validation layer. Emits on
+        `incident.transition.rejected`.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RejectIncidentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/IncidentEnvelope" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/IncidentNotFound" }
+        "409": { $ref: "#/components/responses/IllegalTransition" }
+        "410": { $ref: "#/components/responses/TerminalState" }
 
 components:
   responses:
     ValidationError:
       description: Validation error — payload or query.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    IncidentEnvelope:
+      description: The updated incident envelope.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Incident" }
+    IncidentNotFound:
+      description: No incident with that id (`INCIDENT_NOT_FOUND`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    IllegalTransition:
+      description: |
+        Illegal transition (`ILLEGAL_TRANSITION`). `details.from`
+        carries the actual status; `details.command` carries the
+        rejected command.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    TerminalState:
+      description: |
+        Terminal state (`TERMINAL_STATE`). The incident is `archived`
+        or `rejected` and has no outbound transitions.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -255,6 +412,65 @@ components:
             Optional free-text note. Threaded through to the
             published event's `transition.reason` for audit + ops
             visibility.
+    AssignIncidentRequest:
+      type: object
+      required: [operator_id, assignee_id]
+      properties:
+        operator_id: { type: string, format: uuid }
+        assignee_id:
+          type: string
+          format: uuid
+          description: Responder being routed the incident.
+        note: { type: string, minLength: 1, maxLength: 500 }
+    StartProgressIncidentRequest:
+      type: object
+      required: [operator_id]
+      properties:
+        operator_id: { type: string, format: uuid }
+        note: { type: string, minLength: 1, maxLength: 500 }
+    ResolveIncidentRequest:
+      type: object
+      required: [operator_id, resolution_summary]
+      properties:
+        operator_id: { type: string, format: uuid }
+        resolution_summary:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: |
+            Required. How the incident was closed — feeds the
+            post-incident review and the operator-visible timeline.
+    EscalateIncidentRequest:
+      type: object
+      required: [operator_id, reason]
+      properties:
+        operator_id: { type: string, format: uuid }
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: |
+            Required. Trigger label for auto-escalations
+            (`sla_breach`, `severity_override`) or operator-typed
+            context for manual escalations.
+    ArchiveIncidentRequest:
+      type: object
+      required: [operator_id]
+      properties:
+        operator_id: { type: string, format: uuid }
+        note: { type: string, minLength: 1, maxLength: 500 }
+    RejectIncidentRequest:
+      type: object
+      required: [operator_id, reason]
+      properties:
+        operator_id: { type: string, format: uuid }
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: |
+            Required. For validation-engine rejections this is the
+            failing layer (`layer3_temporal_smoothing`, etc).
     IncidentListResponse:
       type: object
       required: [items, next_cursor]

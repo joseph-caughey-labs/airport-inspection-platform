@@ -8,7 +8,16 @@
  * same shape the operator UI consumes.
  */
 
-import type { AcknowledgeIncidentRequest, Incident } from "@aip/shared-contracts";
+import type {
+  AcknowledgeIncidentRequest,
+  ArchiveIncidentRequest,
+  AssignIncidentRequest,
+  EscalateIncidentRequest,
+  Incident,
+  RejectIncidentRequest,
+  ResolveIncidentRequest,
+  StartProgressIncidentRequest,
+} from "@aip/shared-contracts";
 
 export interface IncidentApiErrorBody {
   error: {
@@ -57,6 +66,36 @@ export class IncidentApi {
    */
   async acknowledge(id: string, body: AcknowledgeIncidentRequest): Promise<Incident> {
     return this.post<Incident>(`/incidents/${id}/acknowledge`, body);
+  }
+
+  /** POST /incidents/:id/assign — `acknowledged` → `assigned`. */
+  async assign(id: string, body: AssignIncidentRequest): Promise<Incident> {
+    return this.post<Incident>(`/incidents/${id}/assign`, body);
+  }
+
+  /** POST /incidents/:id/start_progress — `assigned` → `in_progress`. */
+  async startProgress(id: string, body: StartProgressIncidentRequest): Promise<Incident> {
+    return this.post<Incident>(`/incidents/${id}/start_progress`, body);
+  }
+
+  /** POST /incidents/:id/resolve — `in_progress` (or `escalated`) → `resolved`. */
+  async resolve(id: string, body: ResolveIncidentRequest): Promise<Incident> {
+    return this.post<Incident>(`/incidents/${id}/resolve`, body);
+  }
+
+  /** POST /incidents/:id/escalate — any active state → `escalated`. */
+  async escalate(id: string, body: EscalateIncidentRequest): Promise<Incident> {
+    return this.post<Incident>(`/incidents/${id}/escalate`, body);
+  }
+
+  /** POST /incidents/:id/archive — `resolved` → `archived` (terminal). */
+  async archive(id: string, body: ArchiveIncidentRequest): Promise<Incident> {
+    return this.post<Incident>(`/incidents/${id}/archive`, body);
+  }
+
+  /** POST /incidents/:id/reject — any non-terminal → `rejected` (terminal). */
+  async reject(id: string, body: RejectIncidentRequest): Promise<Incident> {
+    return this.post<Incident>(`/incidents/${id}/reject`, body);
   }
 
   private async post<T>(path: string, body: unknown): Promise<T> {

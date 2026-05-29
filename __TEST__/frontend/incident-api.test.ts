@@ -72,6 +72,93 @@ describe("IncidentApi.acknowledge — happy path", () => {
   });
 });
 
+describe("IncidentApi — other transitions (T-404)", () => {
+  // The 6 remaining lifecycle methods all share `post<Incident>()`
+  // under the hood, so per-method coverage is just: (a) URL + body
+  // shape are right and (b) the parsed envelope flows back. The
+  // shared error-path coverage in `acknowledge — error paths`
+  // already exercises the post() helper.
+  let fetchFn: ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    fetchFn = vi.fn();
+  });
+
+  it("assign POSTs to /assign with operator_id + assignee_id", async () => {
+    fetchFn.mockResolvedValue(
+      jsonResponse(200, { ...STORED_INCIDENT, status: "assigned", assigned_to: OPERATOR }),
+    );
+    const api = new IncidentApi({ fetchFn });
+    const result = await api.assign(INCIDENT_ID, {
+      operator_id: OPERATOR,
+      assignee_id: OPERATOR,
+    });
+    const [url, init] = fetchFn.mock.calls[0]!;
+    expect(url).toBe(`/incidents/${INCIDENT_ID}/assign`);
+    expect(JSON.parse(init.body)).toEqual({ operator_id: OPERATOR, assignee_id: OPERATOR });
+    expect(result.status).toBe("assigned");
+  });
+
+  it("startProgress POSTs to /start_progress", async () => {
+    fetchFn.mockResolvedValue(jsonResponse(200, { ...STORED_INCIDENT, status: "in_progress" }));
+    const api = new IncidentApi({ fetchFn });
+    await api.startProgress(INCIDENT_ID, { operator_id: OPERATOR });
+    expect(fetchFn.mock.calls[0]![0]).toBe(`/incidents/${INCIDENT_ID}/start_progress`);
+  });
+
+  it("resolve POSTs to /resolve with resolution_summary", async () => {
+    fetchFn.mockResolvedValue(jsonResponse(200, { ...STORED_INCIDENT, status: "resolved" }));
+    const api = new IncidentApi({ fetchFn });
+    await api.resolve(INCIDENT_ID, {
+      operator_id: OPERATOR,
+      resolution_summary: "FOD removed",
+    });
+    const init = fetchFn.mock.calls[0]![1];
+    expect(JSON.parse(init.body)).toEqual({
+      operator_id: OPERATOR,
+      resolution_summary: "FOD removed",
+    });
+  });
+
+  it("escalate POSTs to /escalate with reason", async () => {
+    fetchFn.mockResolvedValue(jsonResponse(200, { ...STORED_INCIDENT, status: "escalated" }));
+    const api = new IncidentApi({ fetchFn });
+    await api.escalate(INCIDENT_ID, { operator_id: OPERATOR, reason: "sla_breach" });
+    const init = fetchFn.mock.calls[0]![1];
+    expect(JSON.parse(init.body)).toEqual({ operator_id: OPERATOR, reason: "sla_breach" });
+  });
+
+  it("archive POSTs to /archive", async () => {
+    fetchFn.mockResolvedValue(jsonResponse(200, { ...STORED_INCIDENT, status: "archived" }));
+    const api = new IncidentApi({ fetchFn });
+    const result = await api.archive(INCIDENT_ID, { operator_id: OPERATOR });
+    expect(fetchFn.mock.calls[0]![0]).toBe(`/incidents/${INCIDENT_ID}/archive`);
+    expect(result.status).toBe("archived");
+  });
+
+  it("reject POSTs to /reject with reason", async () => {
+    fetchFn.mockResolvedValue(jsonResponse(200, { ...STORED_INCIDENT, status: "rejected" }));
+    const api = new IncidentApi({ fetchFn });
+    await api.reject(INCIDENT_ID, { operator_id: OPERATOR, reason: "duplicate" });
+    expect(fetchFn.mock.calls[0]![0]).toBe(`/incidents/${INCIDENT_ID}/reject`);
+    expect(JSON.parse(fetchFn.mock.calls[0]![1].body)).toEqual({
+      operator_id: OPERATOR,
+      reason: "duplicate",
+    });
+  });
+
+  it("propagates IncidentApiError on 409 from any transition", async () => {
+    fetchFn.mockResolvedValue(
+      jsonResponse(409, {
+        error: { code: "ILLEGAL_TRANSITION", message: "x", details: { from: "new" } },
+      }),
+    );
+    const api = new IncidentApi({ fetchFn });
+    await expect(
+      api.resolve(INCIDENT_ID, { operator_id: OPERATOR, resolution_summary: "done" }),
+    ).rejects.toBeInstanceOf(IncidentApiError);
+  });
+});
+
 describe("IncidentApi.acknowledge — error paths", () => {
   let fetchFn: ReturnType<typeof vi.fn>;
 
