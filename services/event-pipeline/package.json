@@ -1,6 +1,6 @@
 {
   "name": "@aip/event-pipeline",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Event enrichment, dedup, prioritization, ordering, persistence. This PR adds the shell; real consumers/enrichment/dedup land in Phase 2 (T-205..T-208).",
   "license": "SEE LICENSE IN ../../LICENSE",

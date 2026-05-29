@@ -1,6 +1,6 @@
 {
   "name": "@aip/validation-engine",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Parity 10-layer validation engine. This PR adds the orchestrator scaffold + 10 layer stubs each returning { passed: true }. Real layer logic lands in T-405..T-411.",
   "license": "SEE LICENSE IN ../../LICENSE",
