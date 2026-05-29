@@ -111,6 +111,7 @@ export function alertFromDetection(
   const id = msg.last_event_id ?? msg.payload.detection_id;
   const confidencePct = Math.round(msg.payload.confidence * 100);
   const className = msg.payload.detection_class.toUpperCase();
+  const lowConf = isLowConfidence(msg);
   return {
     id,
     event_type: msg.type,
@@ -120,6 +121,7 @@ export function alertFromDetection(
     sensor_id: msg.payload.sensor_id,
     airport_id: airportId,
     received_at: receivedAt,
+    ...(lowConf ? { low_confidence: true } : {}),
   };
 }
 
