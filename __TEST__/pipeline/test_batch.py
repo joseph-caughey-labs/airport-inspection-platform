@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from _fakes import FakeBroker, FakeRedis
 
+from src.confidence import TemporalSmoother
 from src.detectors import DetectorRegistry
 from src.models import (
     DetectionPayload,
@@ -19,6 +20,12 @@ from src.models import (
     SensorFramePayload,
 )
 from src.pipeline import AiRuntime, BatchContext, BatchScheduler, RuntimeConfig
+
+
+def _no_smoothing() -> TemporalSmoother:
+    """Pre-T-309 tests exercise single-frame publish; disable smoothing
+    so the default 5/3 window doesn't suppress them."""
+    return TemporalSmoother(classes_to_smooth=())
 
 
 def _frame(frame_id: str = "F-1", sensor_id: str = "CAM-1") -> SensorFrameEvent:
@@ -250,6 +257,7 @@ async def test_runtime_with_batching_disabled_uses_per_frame_path(
         redis=fake_redis,
         registry=registry,
         config=RuntimeConfig(batching_enabled=False),
+        smoother=_no_smoothing(),
     )
     await runtime.handle_frame(_frame())
     # One frame, one detection emitted with no batch metadata.
@@ -271,6 +279,7 @@ async def test_runtime_handle_batch_tags_every_detection_with_batch_id(
         redis=fake_redis,
         registry=registry,
         config=RuntimeConfig(batching_enabled=True, batch_size=2, batch_timeout_ms=200),
+        smoother=_no_smoothing(),
     )
     ctx = BatchContext(batch_id="batch-X", batch_size=2, started_at_monotonic=0.0)
     await runtime.handle_batch([_frame("a"), _frame("b")], ctx)
@@ -296,6 +305,7 @@ async def test_runtime_with_batching_enabled_dispatches_via_scheduler(
         redis=fake_redis,
         registry=registry,
         config=RuntimeConfig(batching_enabled=True, batch_size=2, batch_timeout_ms=100),
+        smoother=_no_smoothing(),
     )
     assert runtime.batch_scheduler is not None
     await runtime.batch_scheduler.start()
@@ -326,6 +336,7 @@ async def test_runtime_falls_back_to_single_frame_batch_after_timeout(
         redis=fake_redis,
         registry=registry,
         config=RuntimeConfig(batching_enabled=True, batch_size=8, batch_timeout_ms=80),
+        smoother=_no_smoothing(),
     )
     assert runtime.batch_scheduler is not None
     await runtime.batch_scheduler.start()

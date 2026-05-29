@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 import redis.asyncio as redis_async
 
-from ..confidence import Calibrator
+from ..confidence import Calibrator, TemporalSmoother
 from ..consumers import FrameConsumer
 from ..detectors import DetectorRegistry
 from ..fallback import RuntimeModeController
@@ -42,6 +42,7 @@ class RuntimeCounters:
 
     detections_published: int = 0
     detections_dropped_by_calibration: int = 0
+    detections_suppressed_by_smoothing: int = 0
 
 
 class AiRuntime:
@@ -61,6 +62,7 @@ class AiRuntime:
         config: RuntimeConfig,
         calibrator: Calibrator | None = None,
         mode_controller: RuntimeModeController | None = None,
+        smoother: TemporalSmoother | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
         self._config = config
@@ -69,6 +71,11 @@ class AiRuntime:
         # Tests construct one with simulate_latency=True if they want
         # to assert on per-emit latency.
         self.mode_controller = mode_controller or RuntimeModeController(logger=self._logger)
+        # Temporal smoother — defaults to suppressing single-frame FOD
+        # noise (window 5, threshold 3). Tests that want to assert
+        # smoothing behavior pass their own configured instance; tests
+        # that want to bypass smoothing pass an empty `classes_to_smooth`.
+        self.smoother = smoother if smoother is not None else TemporalSmoother()
         self.orchestrator = DetectorOrchestrator(
             registry=registry,
             parallel=config.parallel_detectors,
@@ -136,25 +143,40 @@ class AiRuntime:
         batch_id: str | None,
     ) -> None:
         frame_meta = frame.payload.metadata
+        # Pass 1: calibration. Anything below min_publish_threshold or
+        # zero'd by the weather modifier drops out before smoothing
+        # so we don't count below-threshold flickers as "fires."
+        calibrated_list: list[DetectionPayload] = []
         for detection in detections:
             calibrated = self.calibrator.apply(detection, frame_meta)
             if calibrated is None:
                 self.counters.detections_dropped_by_calibration += 1
                 continue
-            # Read mode at emit time (not at consume time) so a
-            # mid-batch flip cleanly affects subsequent emissions.
+            calibrated_list.append(calibrated)
+
+        # Pass 2: temporal smoothing. For smoothed classes, requires
+        # `threshold` of `window_size` consecutive frames to fire
+        # before the detection passes through. Non-smoothed classes
+        # are returned unchanged.
+        smoothed = self.smoother.observe(frame.payload.sensor_id, calibrated_list)
+        suppressed_now = len(calibrated_list) - len(smoothed)
+        if suppressed_now > 0:
+            self.counters.detections_suppressed_by_smoothing += suppressed_now
+
+        # Pass 3: mode + batch tagging + publish.
+        for detection in smoothed:
             profile = self.mode_controller.profile
-            meta = dict(calibrated.metadata)
+            meta = dict(detection.metadata)
             meta["mode"] = profile.name
             meta["mode_latency_ms"] = profile.simulate_latency_ms
             if batch_id is not None:
                 meta["batch"] = {"id": batch_id}
-            calibrated = calibrated.model_copy(update={"metadata": meta})
+            tagged = detection.model_copy(update={"metadata": meta})
             await self.mode_controller.apply_latency()
             # Correlation propagation: detection events carry the same
             # correlation_id as the inbound frame so the audit trail
             # is threadable end-to-end.
-            await self.publisher.publish(calibrated, correlation_id=frame.correlation_id)
+            await self.publisher.publish(tagged, correlation_id=frame.correlation_id)
             self.counters.detections_published += 1
 
     async def start(self) -> None:

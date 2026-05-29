@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 import pytest
 from _fakes import FakeBroker, FakeRedis
 
+from src.confidence import TemporalSmoother
 from src.detectors import DetectorRegistry
 from src.models import (
     DetectionPayload,
@@ -23,6 +24,13 @@ from src.models import (
     SensorFramePayload,
 )
 from src.pipeline import AiRuntime, RuntimeConfig
+
+
+def _bypass_smoother() -> TemporalSmoother:
+    """Most pre-T-309 tests assume single-frame FOD reaches the
+    publisher. Pass an empty classes_to_smooth to bypass smoothing
+    cleanly without depending on the default window/threshold."""
+    return TemporalSmoother(classes_to_smooth=())
 
 
 def _frame_json(frame_id: str = "F-1") -> str:
@@ -81,7 +89,12 @@ async def test_runtime_dispatches_frame_and_publishes_detection(
     registry = DetectorRegistry()
     registry.register(_StubDetector())
 
-    runtime = AiRuntime(redis=fake_redis, registry=registry, config=RuntimeConfig(seed=42))
+    runtime = AiRuntime(
+        redis=fake_redis,
+        registry=registry,
+        config=RuntimeConfig(seed=42),
+        smoother=_bypass_smoother(),
+    )
     await runtime.start()
     try:
         await fake_broker.publish("sensor.frame.captured", _frame_json("F-1"))
@@ -122,7 +135,12 @@ async def test_runtime_decode_error_does_not_break_pipeline(
 ) -> None:
     registry = DetectorRegistry()
     registry.register(_StubDetector())
-    runtime = AiRuntime(redis=fake_redis, registry=registry, config=RuntimeConfig())
+    runtime = AiRuntime(
+        redis=fake_redis,
+        registry=registry,
+        config=RuntimeConfig(),
+        smoother=_bypass_smoother(),
+    )
     await runtime.start()
     try:
         # Garbage frame — should bump decode_errors and not crash.
