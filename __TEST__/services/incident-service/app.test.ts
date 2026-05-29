@@ -30,9 +30,10 @@ describe("incident-service — shell", () => {
     expect(res.json()).toMatchObject({ status: "ready" });
   });
 
-  it("GET /incidents returns the empty placeholder envelope", async () => {
+  it("GET /incidents returns the canonical paginated envelope (shape only)", async () => {
     const res = await app.inject({ method: "GET", url: "/incidents" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ items: [], total: 0 });
+    // Behavior tested in detail in __TEST__/api/rest/incidents/.
+    expect(res.json()).toEqual({ items: [], next_cursor: null, total: 0 });
   });
 });

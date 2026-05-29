@@ -1,0 +1,208 @@
+openapi: 3.1.0
+info:
+  title: Airport Inspection Platform — Operator REST API
+  version: 0.3.0
+  description: |
+    REST surface that the operator dashboard, validation engine, and
+    downstream automation consume. Every response uses canonical
+    envelopes from `@aip/shared-contracts`; errors use the shared
+    `ErrorResponse` envelope.
+
+    This file is hand-authored alongside the route registrations
+    (`services/incident-service/src/routes/incidents.ts` etc.) and
+    is the source of truth for client codegen. CI verifies the
+    incident section matches the live response shape via the route
+    tests in `__TEST__/api/rest/incidents/`.
+
+servers:
+  - url: http://localhost:3001
+    description: api-gateway (local docker)
+  - url: http://localhost:3006
+    description: incident-service (direct, no auth)
+
+tags:
+  - name: incidents
+    description: Incident lifecycle CRUD. Transition endpoints land in T-403/T-404.
+
+paths:
+  /incidents:
+    get:
+      tags: [incidents]
+      summary: List incidents
+      description: |
+        Paginated, filterable list. Sorted by `created_at` DESC with
+        `id` as the tiebreaker. The `next_cursor` field is null on
+        the final page; pass it back as `cursor` to fetch the next.
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: "#/components/schemas/IncidentStatus"
+        - in: query
+          name: severity
+          schema:
+            $ref: "#/components/schemas/Severity"
+        - in: query
+          name: airport_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: runway_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: created_after
+          description: Inclusive lower bound on `created_at` (ISO-8601).
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: created_before
+          description: Exclusive upper bound on `created_at` (ISO-8601).
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        "200":
+          description: A paginated incident list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentListResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    post:
+      tags: [incidents]
+      summary: Create an incident
+      description: |
+        Typically called by the validation engine on Layer 10 cert
+        (T-411). Operator UI does NOT call this directly — incidents
+        originate from AI detections.
+
+        The `idempotency_key` enables safe retries: a second POST
+        with the same key returns the originally-created incident
+        rather than creating a duplicate.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIncidentRequest"
+      responses:
+        "201":
+          description: Incident created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Incident" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          description: |
+            An incident with this `idempotency_key` already exists.
+            The body's `details.existingId` carries that id.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /incidents/{id}:
+    get:
+      tags: [incidents]
+      summary: Fetch a single incident
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The incident envelope.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Incident" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          description: No incident with that id.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+components:
+  responses:
+    ValidationError:
+      description: Validation error — payload or query.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+  schemas:
+    IncidentStatus:
+      type: string
+      enum: [new, acknowledged, assigned, in_progress, resolved, escalated, archived, rejected]
+    Severity:
+      type: string
+      enum: [critical, high, medium, low, info]
+    Incident:
+      type: object
+      required: [id, airport_id, severity, status, title, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        airport_id: { type: string, format: uuid }
+        runway_id: { type: string, format: uuid, nullable: true }
+        severity: { $ref: "#/components/schemas/Severity" }
+        status: { $ref: "#/components/schemas/IncidentStatus" }
+        title: { type: string, minLength: 1, maxLength: 300 }
+        details:
+          type: object
+          additionalProperties: true
+          nullable: true
+        acknowledged_by: { type: string, format: uuid, nullable: true }
+        acknowledged_at: { type: string, format: date-time, nullable: true }
+        assigned_to: { type: string, format: uuid, nullable: true }
+        resolved_at: { type: string, format: date-time, nullable: true }
+        idempotency_key: { type: string, minLength: 1, maxLength: 200, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CreateIncidentRequest:
+      type: object
+      required: [airport_id, severity, title]
+      properties:
+        airport_id: { type: string, format: uuid }
+        runway_id: { type: string, format: uuid }
+        severity: { $ref: "#/components/schemas/Severity" }
+        title: { type: string, minLength: 1, maxLength: 300 }
+        details:
+          type: object
+          additionalProperties: true
+        idempotency_key: { type: string, minLength: 1, maxLength: 200 }
+    IncidentListResponse:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Incident" }
+        next_cursor: { type: string, nullable: true }
+        total: { type: integer, minimum: 0 }
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details:
+              type: object
+              additionalProperties: true
+            correlation_id: { type: string, format: uuid }
