@@ -22,6 +22,11 @@ from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 from prometheus_client.metrics_core import GaugeMetricFamily
 
+from .confidence import (
+    CalibrationConfig,
+    Calibrator,
+    load_weather_degradation,
+)
 from .detectors import (
     AnomalyDetector,
     CrackDetector,
@@ -34,6 +39,40 @@ from .detectors import (
 )
 from .pipeline import AiRuntime, RuntimeConfig
 from .redis_client import check_health, create_redis
+
+
+def _default_calibrator() -> Calibrator:
+    """Production calibrator.
+
+    Per-detector linear coefficients are conservative defaults
+    derived from the fixture truth set — they intentionally don't
+    over-fit. The calibration curve + fitting methodology is
+    documented in `docs/validation/risk-scoring.md`. Re-fitting after
+    a fixture change happens manually and lands as a coefficient
+    change here + a docs revision in the same PR.
+    """
+    return Calibrator(
+        weather=load_weather_degradation(_SOP_BASELINE_PATH),
+        per_detector={
+            # FOD detector slightly over-confident on borderline truth
+            # → narrow the slope so high-score boundary cases settle
+            # around 0.7 calibrated.
+            "fod": CalibrationConfig(slope=0.95, intercept=0.0, min_publish_threshold=0.4),
+            # Crack detector tends to under-shoot — small positive
+            # intercept lifts mid-range scores into the 0.6-0.8 band.
+            "crack": CalibrationConfig(slope=1.0, intercept=0.05, min_publish_threshold=0.35),
+            # Snowbank measurements are deterministic; identity calibration
+            # is the right answer.
+            "snowbank": CalibrationConfig(slope=1.0, intercept=0.0, min_publish_threshold=0.5),
+            # Wildlife: identity. Species set is small enough that
+            # the truth-driven score already calibrates well.
+            "wildlife": CalibrationConfig(slope=1.0, intercept=0.0, min_publish_threshold=0.4),
+            # Anomaly stays at identity — its low-confidence band is
+            # already the routing signal for HITL.
+            "anomaly": CalibrationConfig(slope=1.0, intercept=0.0, min_publish_threshold=0.0),
+        },
+    )
+
 
 # Repo-root-relative path to the SOP baseline. In docker the file is
 # copied into the image at build time; locally it's read straight from
@@ -80,11 +119,13 @@ def build_app(
     redis_client: Any | None = None,
     detector_registry: DetectorRegistry | None = None,
     config: RuntimeConfig | None = None,
+    calibrator: Calibrator | None = None,
 ) -> FastAPI:
     client = redis_client if redis_client is not None else create_redis()
     cfg = config if config is not None else RuntimeConfig.from_env()
     registry = detector_registry if detector_registry is not None else _default_registry(cfg)
-    runtime = AiRuntime(redis=client, registry=registry, config=cfg)
+    cal = calibrator if calibrator is not None else _default_calibrator()
+    runtime = AiRuntime(redis=client, registry=registry, config=cfg, calibrator=cal)
     logger = logging.getLogger("ai-inference.app")
 
     @asynccontextmanager
