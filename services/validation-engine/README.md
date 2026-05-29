@@ -4,18 +4,18 @@ The Parity 10-layer validation pipeline. Architecture is locked by [ADR 0008](..
 
 ## The 10 layers
 
-| #   | Folder                | Lands in         | Purpose                                                                                                        |
-| --- | --------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------- |
-| 1   | `01-input/`           | **T-406 (live)** | Envelope shape, required fields, UUID + ISO-8601 format, timestamp window, geo bounds.                         |
-| 2   | `02-schema/`          | **T-407 (live)** | DTO/event schema conformance (zod), `schema_version` allowlist, event-type-specific payload schemas.           |
-| 3   | `03-business-rules/`  | **T-408 (live)** | SOP-driven policy: severity-by-location, dimension/width/setback thresholds, high-risk species severity floor. |
-| 4   | `04-source-of-truth/` | **T-409 (live)** | Reference-data lookup: sensor + airport must exist.                                                            |
-| 5   | `05-cross-system/`    | **T-409 (live)** | Cross-check: payload airport matches sensor's registered airport; sensor isn't `offline` at capture time.      |
-| 6   | `06-ai-output/`       | **T-410 (live)** | Bbox extent inside image, confidence ≥ floor, evidence linkage non-sentinel, captured_at within envelope skew. |
-| 7   | `07-risk/`            | **T-410 (live)** | Named-factor risk score, HITL routing signal, RISK_EXCEPTION_THRESHOLD gate.                                   |
-| 8   | `08-human-review/`    | T-411            | HITL routing; reviewer claim/decision.                                                                         |
-| 9   | `09-audit/`           | T-411            | Lineage emission.                                                                                              |
-| 10  | `10-certification/`   | T-411            | Final gate — all required layers passed or approved exception.                                                 |
+| #   | Folder                | Lands in         | Purpose                                                                                                         |
+| --- | --------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------- |
+| 1   | `01-input/`           | **T-406 (live)** | Envelope shape, required fields, UUID + ISO-8601 format, timestamp window, geo bounds.                          |
+| 2   | `02-schema/`          | **T-407 (live)** | DTO/event schema conformance (zod), `schema_version` allowlist, event-type-specific payload schemas.            |
+| 3   | `03-business-rules/`  | **T-408 (live)** | SOP-driven policy: severity-by-location, dimension/width/setback thresholds, high-risk species severity floor.  |
+| 4   | `04-source-of-truth/` | **T-409 (live)** | Reference-data lookup: sensor + airport must exist.                                                             |
+| 5   | `05-cross-system/`    | **T-409 (live)** | Cross-check: payload airport matches sensor's registered airport; sensor isn't `offline` at capture time.       |
+| 6   | `06-ai-output/`       | **T-410 (live)** | Bbox extent inside image, confidence ≥ floor, evidence linkage non-sentinel, captured_at within envelope skew.  |
+| 7   | `07-risk/`            | **T-410 (live)** | Named-factor risk score, HITL routing signal, RISK_EXCEPTION_THRESHOLD gate.                                    |
+| 8   | `08-human-review/`    | **T-411 (live)** | HITL routing decision (`details.hitl`) from L7's risk + prior failures.                                         |
+| 9   | `09-audit/`           | **T-411 (live)** | Records the run to an optional `AuditSink`; carries envelope summary on `details.audit`.                        |
+| 10  | `10-certification/`   | **T-411 (live)** | Terminal gate: `HITL_PENDING` if L8 routed, `CERTIFICATION_INELIGIBLE` on required-layer failure, else certify. |
 
 ### Layer 1 — Input Validation (live)
 
@@ -118,6 +118,40 @@ L7 doesn't reject the way L1–L6 do. It computes a transparent named-factor ris
 
 Sensor frames and malformed inputs pass L7 — no risk model applies.
 
+### Layer 8 — Human-in-the-Loop Routing (live)
+
+`createHumanReviewLayer()`. Always passes; produces a routing decision on `details.hitl`:
+
+```ts
+interface HitlDecision {
+  routed_to_hitl: boolean;
+  priority: "high" | "normal";
+  reasons: string[];
+}
+```
+
+Routes when either L7 set `routes_to_hitl=true` OR any prior layer failed (contradictions across the pipeline route to HITL even when their individual rejection was a hard fail — the audit trail wants the reviewer's read). Priority is `high` when routed AND `payload.severity_hint === "critical"`; otherwise `normal`. Sensor frames pass without producing a decision.
+
+### Layer 9 — Audit Trail Emission (live)
+
+`createAuditEmissionLayer({ sink, now })`. Always passes; builds a `ValidationAuditRecord` from `ctx.previous_results` + envelope summary + L7's risk + L8's HITL decision, and (optionally) emits it to an `AuditSink`. The hash-chained append-only audit log lives in audit-service (T-412); L9 is the engine-side emit point.
+
+Two sink implementations ship: `RecordingAuditSink` (in-memory, for tests) and a future `RestAuditSink` that POSTs to audit-service (deferred to keep wiring concerns — retries, batching, backpressure — in their own ticket). Same default-pass semantics as L4/L5/L10: no sink → `details.audit` still carries the envelope summary, but nothing is transmitted.
+
+### Layer 10 — Final Certification (live)
+
+`createCertificationLayer({ requiredLayers, now })`. Terminal gate. Three outcomes:
+
+| Condition                                       | Result                                                                  |
+| ----------------------------------------------- | ----------------------------------------------------------------------- |
+| L8's `routed_to_hitl === true`                  | fail `HITL_PENDING` (reviewer decision required)                        |
+| Any required layer failed in `previous_results` | fail `CERTIFICATION_INELIGIBLE`                                         |
+| Else                                            | pass + `details.certification = { event_id, event_type, certified_at }` |
+
+`requiredLayers` defaults to L1, L2, L3, L4, L5, L6, L9 — excludes L7 (its job is to surface the score, not gate) and L8 (always passes; HITL routing blocks via `HITL_PENDING`, not a layer fail). Production short-circuit normally means L10 only runs after L1–L9 all passed; the required-layer check is defense-in-depth for tests where `shortCircuit: false` lets every layer run.
+
+HITL precedence: when both HITL routing and a required-layer failure apply, `HITL_PENDING` wins — the reviewer is the right surface for a contradiction.
+
 ## Endpoints
 
 | Method | Path        | Returns                                         |
@@ -126,7 +160,7 @@ Sensor frames and malformed inputs pass L7 — no risk model applies.
 | GET    | `/ready`    | 200 ready                                       |
 | POST   | `/validate` | `{ run_id, layers: [...], certified: boolean }` |
 
-`POST /validate` accepts `{ submission_id, payload }` and runs the configured layer list. The HTTP layer parses the body via `ValidationSubmissionRequest` from `@aip/shared-contracts`. L1 → L7 are live (T-406 → T-410). L8 → L10 are stubs returning `passed: true`; T-411 replaces them with real HITL routing + audit emission + certification logic.
+`POST /validate` accepts `{ submission_id, payload }` and runs the configured layer list. The HTTP layer parses the body via `ValidationSubmissionRequest` from `@aip/shared-contracts`. **All 10 layers are live** (T-406 → T-411). The orchestrator short-circuits at the first failing layer in production (`buildApp({ shortCircuit: true })`) so e.g. an L1-rejected envelope never reaches the I/O-touching layers below.
 
 Three Prometheus metrics are exposed on `GET /metrics`:
 
