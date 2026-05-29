@@ -1,6 +1,6 @@
 # `validation-engine`
 
-The Parity 10-layer validation pipeline. This PR lands the **scaffold**: an `orchestrator` that runs the 10 layers in order, each layer as an isolated module with a stub returning `{ passed: true }`. Real layer logic arrives in Phase 4 (T-405 → T-411).
+The Parity 10-layer validation pipeline. Architecture is locked by [ADR 0008](../../docs/adr/0008-parity-10-layer-validation.md). T-302 landed the scaffold (orchestrator + 10 stubbed layers). **T-405** (this PR) promoted the canonical contracts (`ValidationLayerId`, `ValidationLayerResult`, `ValidationRun`, `ValidationSubmissionRequest`) into `@aip/shared-contracts` so the bridge in `event-pipeline` and the operator dashboard can consume them; added the production short-circuit default (stops at first failing layer) and prom metrics. Real per-layer logic lands in T-406 → T-411.
 
 ## The 10 layers
 
@@ -25,7 +25,15 @@ The Parity 10-layer validation pipeline. This PR lands the **scaffold**: an `orc
 | GET    | `/ready`    | 200 ready                                       |
 | POST   | `/validate` | `{ run_id, layers: [...], certified: boolean }` |
 
-`POST /validate` accepts `{ submission_id, payload }` and runs all 10 layers in order. With every layer stubbed to `passed: true`, the response is always `certified: true`; once T-405..T-411 land, real failures + short-circuit logic engage.
+`POST /validate` accepts `{ submission_id, payload }` and runs the configured layer list. The HTTP layer parses the body via `ValidationSubmissionRequest` from `@aip/shared-contracts`. With every layer stubbed `passed: true` the response is always `certified: true`; T-406+ replaces the stubs with real per-domain logic.
+
+Three Prometheus metrics are exposed on `GET /metrics`:
+
+- `validation_layers_run_total{layer, passed}` — per-layer counter
+- `validation_runs_total{certified}` — full-run outcome
+- `validation_run_duration_seconds{certified}` — histogram
+
+Production mode (`buildApp({ shortCircuit: true })`, the default) stops the orchestrator at the first failing layer; tests can pass `shortCircuit: false` to assert every stub layer's result.
 
 ## Layer contract
 

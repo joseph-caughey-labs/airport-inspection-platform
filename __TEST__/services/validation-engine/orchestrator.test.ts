@@ -1,5 +1,9 @@
+import { createRegistry } from "@aip/metrics";
 import { describe, expect, it } from "vitest";
-import { runValidation } from "../../../services/validation-engine/src/orchestrator/index.js";
+import {
+  createOrchestratorMetrics,
+  runValidation,
+} from "../../../services/validation-engine/src/orchestrator/index.js";
 import {
   ORDERED_LAYERS,
   type ValidationLayer,
@@ -95,5 +99,80 @@ describe("runValidation — short-circuit", () => {
     const run = await runValidation({}, { layers });
     expect(run.layers).toHaveLength(10);
     expect(run.certified).toBe(false);
+  });
+});
+
+describe("runValidation — metrics", () => {
+  function reg() {
+    return createRegistry({ service: "orch-metrics-test", collectDefault: false });
+  }
+
+  it("counts each layer with its pass/fail status", async () => {
+    const registry = reg();
+    const metrics = createOrchestratorMetrics(registry);
+    const failingLayer: ValidationLayer = {
+      id: "03_business_rules",
+      name: "fail",
+      async run() {
+        return { layer: "03_business_rules", passed: false };
+      },
+    };
+    const layers = [ORDERED_LAYERS[0]!, ORDERED_LAYERS[1]!, failingLayer];
+    await runValidation({}, { layers, metrics });
+    const text = await registry.metrics();
+    expect(text).toMatch(
+      /validation_layers_run_total\{[^}]*layer="01_input"[^}]*passed="true"[^}]*\}\s+1/,
+    );
+    expect(text).toMatch(
+      /validation_layers_run_total\{[^}]*layer="03_business_rules"[^}]*passed="false"[^}]*\}\s+1/,
+    );
+  });
+
+  it("counts certified=false on the run counter when any layer fails", async () => {
+    const registry = reg();
+    const metrics = createOrchestratorMetrics(registry);
+    const failingLayer: ValidationLayer = {
+      id: "01_input",
+      name: "fail-first",
+      async run() {
+        return { layer: "01_input", passed: false };
+      },
+    };
+    await runValidation({}, { layers: [failingLayer], metrics });
+    const text = await registry.metrics();
+    expect(text).toMatch(/validation_runs_total\{[^}]*certified="false"[^}]*\}\s+1/);
+  });
+
+  it("observes a sample on validation_run_duration_seconds", async () => {
+    const registry = reg();
+    const metrics = createOrchestratorMetrics(registry);
+    await runValidation({}, { metrics });
+    const text = await registry.metrics();
+    // _count and _sum are emitted by histograms; at least one sample
+    // should be there with certified=true.
+    expect(text).toMatch(/validation_run_duration_seconds_count\{[^}]*certified="true"[^}]*\}\s+1/);
+  });
+
+  it("short-circuit failure still records the run + the failed layer", async () => {
+    const registry = reg();
+    const metrics = createOrchestratorMetrics(registry);
+    const failingLayer: ValidationLayer = {
+      id: "01_input",
+      name: "fail-first",
+      async run() {
+        return { layer: "01_input", passed: false };
+      },
+    };
+    await runValidation(
+      {},
+      { layers: [failingLayer, ORDERED_LAYERS[1]!], metrics, shortCircuit: true },
+    );
+    const text = await registry.metrics();
+    // L1 ran + failed; L2 was short-circuited away and must NOT have
+    // a counter row.
+    expect(text).toMatch(
+      /validation_layers_run_total\{[^}]*layer="01_input"[^}]*passed="false"[^}]*\}\s+1/,
+    );
+    expect(text).not.toMatch(/validation_layers_run_total\{[^}]*layer="02_schema"/);
   });
 });
