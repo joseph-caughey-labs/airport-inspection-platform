@@ -1,6 +1,6 @@
 {
   "name": "@aip/metrics",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Prometheus metrics for every Node/TS service. prom-client under the hood, with opinionated factories for RED (request/error/duration) and queue (depth/processed/errors) surfaces, and a built-in default-labels convention.",
   "license": "SEE LICENSE IN ../../LICENSE",

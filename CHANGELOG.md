@@ -2,6 +2,54 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-05-29
+
+**Phase 3 — AI inference + detection-aware operator dashboard.** The Python AI service now consumes sensor frames, runs five simulated detector heads, calibrates the output, suppresses false positives across a sliding window, and emits detection events that flow end-to-end to the operator dashboard. The dashboard surfaces them in the alert feed with severity + confidence + a "LOW CONF" indicator when the weather modifier degrades the score.
+
+### Added
+
+#### AI service runtime (`services/ai-inference`)
+
+- **Service runtime** — `FrameConsumer` (Redis pubsub for `sensor.frame.captured`) → `DetectorOrchestrator` → `DetectionPublisher` → `ai.detection.<class>.emitted`. Pydantic models mirror the TS `shared-contracts` envelope so the wire format is contract-checked on both sides. Deterministic given a fixed `RuntimeConfig.seed`. (#119)
+- **Detector grid** — five fixture-truth-driven heads with seeded confidence + bbox jitter:
+  - **FOD** (#120) — location-aware severity (runway → critical, taxiway → high, apron → medium).
+  - **Crack** (#121) — three subtypes (longitudinal, transverse, alligator) with width-driven severity bands per the Domain Expert SOP.
+  - **Snowbank** (#122) — height + setback violations vs. `sop-baseline.json`; compliant snowbanks emit nothing.
+  - **Wildlife + Anomaly** (#123) — wildlife rates severity by species risk × proximity to the runway buffer; anomaly is a low-confidence HITL routing flag.
+- **Confidence calibration + weather degradation** (#124) — per-detector linear calibration (`slope`, `intercept`, `min_publish_threshold`), then a weather modifier driven by `frame.metadata.weather.visibility_m`. Calibration curve + per-detector coefficients documented in `docs/validation/risk-scoring.md`. Calibration NEVER raises confidence; below `min_publish_threshold` drops out before the publisher.
+- **Batch inference scheduler** (#125) — opt-in `BatchScheduler` between the consumer and orchestrator. Flushes on `batch_size` (default 8) OR `batch_timeout_ms` (default 200). Single-frame timeouts still flush as a size-1 batch so a lone frame never starves. Every detection in a batch records `metadata.batch.id`.
+- **GPU-unavailable fallback simulation** (#126) — `RuntimeModeController` with `gpu` (5 ms) and `cpu_fallback` (50 ms) profiles. Mid-batch toggle via `POST /admin/gpu-state` cleanly affects subsequent emissions. Every detection records `metadata.mode` + `mode_latency_ms` for the audit trail.
+- **Temporal smoothing — multi-frame consensus FP suppression** (#127) — `TemporalSmoother` with a sliding window per `(sensor_id, detection_class)`. Default `window_size=5`, `threshold=3`, `classes_to_smooth=("fod",)`: single-frame FOD flickers suppressed, sustained 3+ frames emit with a `metadata.smoothing` audit block. Non-smoothed classes pass through unchanged.
+
+#### Backend integration (`services/event-pipeline`)
+
+- **`AiDetectionBridge`** (#128) — `psubscribe`s to `ai.detection.*.emitted` on its own dedicated subscriber connection and inserts each event into `event_outbox` with `channel=events.broadcast.<airport_id>`. The existing `OutboxWorker` publishes to Redis from there, where `ws-broadcaster` fans it out to the operator dashboard. `payload.airport_id` overrides the configured default — sensor → airport mapping becomes a real reference-data lookup later.
+
+#### Frontend (`apps/web`)
+
+- **AI detection envelope decode** (#128) — `AiDetectionMessage` (regex-shaped `type` so adding a class doesn't force a rebuild), new `DecodeResult.detection` variant, `alertFromDetection` formats the title as `<CLASS> detected · <%>` and routes severity straight from the detector's `severity_hint`. `isLowConfidence(msg, threshold=0.5)` is the indicator hook.
+- **"LOW CONF" indicator** (#129) — `AlertItem.low_confidence` is stamped by `alertFromDetection` when the calibrated confidence falls below 0.5. `AlertRow.vue` renders a bordered "LOW CONF" badge with `aria-label="Low confidence detection"` next to the title. Per-alert scope (not feed-wide). Drives scenario 06.
+
+#### Quality + observability
+
+- **Playwright scenario 06 — weather-degraded visibility** (#129) — proves the calibration → frontend chain end-to-end: clear-weather detection shows no badge, weather-degraded detection surfaces the indicator while still appearing in the feed (we surface, not suppress).
+- **Risk-scoring documentation** (#124) — `docs/validation/risk-scoring.md` covers the calibration curve, methodology, per-detector coefficient table, weather modifier table, and invariants.
+
+### Test counts
+
+- `@aip/event-pipeline`: **96 tests** (+10 for the AI detection bridge)
+- `@aip/ws-broadcaster`: 40 tests
+- `@aip/web` (unit): **80 tests** (+18 for detection decoding + low-conf flag)
+- `@aip/db-schema`: 29 tests
+- `ai-inference` (pytest): **207 tests** across models, orchestrator, publisher, runtime, batch, fallback, smoothing, calibration, and each detector
+- Playwright e2e: **8 scenarios** (smoke ×2, fixture-driven feed ×3, weather-degraded ×3)
+
+### Carried into Phase 4 backlog
+
+- Bounding-box overlay on the live map (data flows through; component lands with the incident timeline UI).
+- Real-stack integration variants of scenarios 04 + 06 — fold into T-507's dockerized CI workflow.
+- Sensor → airport lookup via reference-data instead of `defaultAirportId`.
+
 ## [0.2.0] — 2026-05-28
 
 **Phase 2 — Live ingestion + fanout.** Sensor frames flow end-to-end: camera simulator → consumer pipeline → Postgres + outbox → Redis fanout → WebSocket subscribers → live operator dashboard. Reconnect-resume, presence, dedup, and a Playwright e2e harness all included.
