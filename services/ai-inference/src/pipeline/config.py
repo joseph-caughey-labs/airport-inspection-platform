@@ -26,6 +26,13 @@ class RuntimeConfig:
     schema_version: str = "v1"
     seed: int = 0
     parallel_detectors: bool = False
+    # Batch inference (T-307). When enabled, the runtime routes
+    # frames through a BatchScheduler that flushes on size OR
+    # timeout. Disabled by default so the per-frame dispatch path
+    # remains the default for low-traffic local dev.
+    batching_enabled: bool = False
+    batch_size: int = 8
+    batch_timeout_ms: int = 200
 
     @classmethod
     def from_env(cls) -> RuntimeConfig:
@@ -39,4 +46,7 @@ class RuntimeConfig:
             schema_version=os.environ.get("AI_SCHEMA_VERSION", "v1"),
             seed=int(os.environ.get("AI_SEED", "0")),
             parallel_detectors=(os.environ.get("AI_PARALLEL_DETECTORS", "false") == "true"),
+            batching_enabled=(os.environ.get("AI_BATCHING_ENABLED", "false") == "true"),
+            batch_size=int(os.environ.get("AI_BATCH_SIZE", "8")),
+            batch_timeout_ms=int(os.environ.get("AI_BATCH_TIMEOUT_MS", "200")),
         )
