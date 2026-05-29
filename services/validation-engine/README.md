@@ -9,8 +9,8 @@ The Parity 10-layer validation pipeline. Architecture is locked by [ADR 0008](..
 | 1   | `01-input/`           | **T-406 (live)** | Envelope shape, required fields, UUID + ISO-8601 format, timestamp window, geo bounds.                         |
 | 2   | `02-schema/`          | **T-407 (live)** | DTO/event schema conformance (zod), `schema_version` allowlist, event-type-specific payload schemas.           |
 | 3   | `03-business-rules/`  | **T-408 (live)** | SOP-driven policy: severity-by-location, dimension/width/setback thresholds, high-risk species severity floor. |
-| 4   | `04-source-of-truth/` | T-409            | Cross-check against `reference-data`.                                                                          |
-| 5   | `05-cross-system/`    | T-409            | Consistency across DB, cache, derived views.                                                                   |
+| 4   | `04-source-of-truth/` | **T-409 (live)** | Reference-data lookup: sensor + airport must exist.                                                            |
+| 5   | `05-cross-system/`    | **T-409 (live)** | Cross-check: payload airport matches sensor's registered airport; sensor isn't `offline` at capture time.      |
 | 6   | `06-ai-output/`       | T-410            | Bbox sanity, confidence ≥ threshold, evidence linkage.                                                         |
 | 7   | `07-risk/`            | T-410            | Named-factor risk score; threshold gating.                                                                     |
 | 8   | `08-human-review/`    | T-411            | HITL routing; reviewer claim/decision.                                                                         |
@@ -64,6 +64,28 @@ SOP-driven policy. Configurable via `createBusinessRulesLayer({ thresholds })` (
 
 Sensor frame events and `anomaly` detections pass L3 unconditionally (no SOP-driven rules apply). All failures are collected into `details.failures` in a single pass; top-level `error_code` is the first failure.
 
+### Layers 4 + 5 — Source-of-Truth and Cross-System (live)
+
+L4 and L5 are the first I/O-touching layers — they take a `ReferenceDataClient` via factory config. The default `ORDERED_LAYERS` path uses no client, so both layers pass through; the engine stays usable in tests + bootstrap without a reference-data dependency. Production wiring in `app.ts` passes a real client.
+
+**L4 — `createSourceOfTruthLayer({ client })`**
+
+| Rule                                                                | Failure code        |
+| ------------------------------------------------------------------- | ------------------- |
+| `payload.sensor_id` must resolve via `getSensorById`                | `SENSOR_NOT_FOUND`  |
+| `payload.airport_id` (if present) must resolve via `getAirportById` | `AIRPORT_NOT_FOUND` |
+
+**L5 — `createCrossSystemLayer({ client })`**
+
+| Rule                                                               | Failure code                |
+| ------------------------------------------------------------------ | --------------------------- |
+| `payload.airport_id` (if present) equals the sensor's `airport_id` | `SENSOR_AIRPORT_MISMATCH`   |
+| Sensor's `status` is not `offline`                                 | `SENSOR_OFFLINE_AT_CAPTURE` |
+
+L5 defers to L4 on missing entities — when `getSensorById` returns null, L5 passes silently to avoid double-failing the operator on the same issue.
+
+Test helper: `InMemoryReferenceDataClient({ sensors, airports })` lives in `src/reference/client.ts` and is the seed for the unit tests. A `RestReferenceDataClient` that points at the running `reference-data` service is intentionally deferred to a later ticket — the engine ↔ reference-data wiring (timeouts, retries, caching) is its own concern; the layers stay testable via the interface alone.
+
 ## Endpoints
 
 | Method | Path        | Returns                                         |
@@ -72,7 +94,7 @@ Sensor frame events and `anomaly` detections pass L3 unconditionally (no SOP-dri
 | GET    | `/ready`    | 200 ready                                       |
 | POST   | `/validate` | `{ run_id, layers: [...], certified: boolean }` |
 
-`POST /validate` accepts `{ submission_id, payload }` and runs the configured layer list. The HTTP layer parses the body via `ValidationSubmissionRequest` from `@aip/shared-contracts`. L1 (T-406), L2 (T-407), and L3 (T-408) are live — production runs reject malformed envelopes, schema-violating payloads, and SOP-violating detections before reaching L4. The remaining layers are still stubs returning `passed: true`; T-409+ replaces them with real per-domain logic.
+`POST /validate` accepts `{ submission_id, payload }` and runs the configured layer list. The HTTP layer parses the body via `ValidationSubmissionRequest` from `@aip/shared-contracts`. L1 → L5 are live (T-406 → T-409). The remaining layers (L6 → L10) are stubs returning `passed: true`; T-410 + T-411 replace them with real per-domain logic.
 
 Three Prometheus metrics are exposed on `GET /metrics`:
 
