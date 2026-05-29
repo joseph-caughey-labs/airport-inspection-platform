@@ -23,11 +23,14 @@ from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_l
 from prometheus_client.metrics_core import GaugeMetricFamily
 
 from .detectors import (
+    AnomalyDetector,
     CrackDetector,
     DetectorRegistry,
     FodDetector,
     SnowbankDetector,
+    WildlifeDetector,
     load_snowbank_thresholds,
+    load_wildlife_thresholds,
 )
 from .pipeline import AiRuntime, RuntimeConfig
 from .redis_client import check_health, create_redis
@@ -61,6 +64,15 @@ def _default_registry(cfg: RuntimeConfig) -> DetectorRegistry:
             thresholds=load_snowbank_thresholds(_SOP_BASELINE_PATH),
         )
     )
+    high_risk_classes, runway_buffer_m = load_wildlife_thresholds(_SOP_BASELINE_PATH)
+    reg.register(
+        WildlifeDetector(
+            seed=cfg.seed + 3,
+            high_risk_classes=high_risk_classes,
+            runway_buffer_m=runway_buffer_m,
+        )
+    )
+    reg.register(AnomalyDetector(seed=cfg.seed + 4))
     return reg
 
 
