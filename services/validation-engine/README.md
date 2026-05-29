@@ -4,18 +4,18 @@ The Parity 10-layer validation pipeline. Architecture is locked by [ADR 0008](..
 
 ## The 10 layers
 
-| #   | Folder                | Lands in         | Purpose                                                                                              |
-| --- | --------------------- | ---------------- | ---------------------------------------------------------------------------------------------------- |
-| 1   | `01-input/`           | **T-406 (live)** | Envelope shape, required fields, UUID + ISO-8601 format, timestamp window, geo bounds.               |
-| 2   | `02-schema/`          | **T-407 (live)** | DTO/event schema conformance (zod), `schema_version` allowlist, event-type-specific payload schemas. |
-| 3   | `03-business-rules/`  | T-408            | Severity-by-location, SOP thresholds.                                                                |
-| 4   | `04-source-of-truth/` | T-409            | Cross-check against `reference-data`.                                                                |
-| 5   | `05-cross-system/`    | T-409            | Consistency across DB, cache, derived views.                                                         |
-| 6   | `06-ai-output/`       | T-410            | Bbox sanity, confidence ≥ threshold, evidence linkage.                                               |
-| 7   | `07-risk/`            | T-410            | Named-factor risk score; threshold gating.                                                           |
-| 8   | `08-human-review/`    | T-411            | HITL routing; reviewer claim/decision.                                                               |
-| 9   | `09-audit/`           | T-411            | Lineage emission.                                                                                    |
-| 10  | `10-certification/`   | T-411            | Final gate — all required layers passed or approved exception.                                       |
+| #   | Folder                | Lands in         | Purpose                                                                                                        |
+| --- | --------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------- |
+| 1   | `01-input/`           | **T-406 (live)** | Envelope shape, required fields, UUID + ISO-8601 format, timestamp window, geo bounds.                         |
+| 2   | `02-schema/`          | **T-407 (live)** | DTO/event schema conformance (zod), `schema_version` allowlist, event-type-specific payload schemas.           |
+| 3   | `03-business-rules/`  | **T-408 (live)** | SOP-driven policy: severity-by-location, dimension/width/setback thresholds, high-risk species severity floor. |
+| 4   | `04-source-of-truth/` | T-409            | Cross-check against `reference-data`.                                                                          |
+| 5   | `05-cross-system/`    | T-409            | Consistency across DB, cache, derived views.                                                                   |
+| 6   | `06-ai-output/`       | T-410            | Bbox sanity, confidence ≥ threshold, evidence linkage.                                                         |
+| 7   | `07-risk/`            | T-410            | Named-factor risk score; threshold gating.                                                                     |
+| 8   | `08-human-review/`    | T-411            | HITL routing; reviewer claim/decision.                                                                         |
+| 9   | `09-audit/`           | T-411            | Lineage emission.                                                                                              |
+| 10  | `10-certification/`   | T-411            | Final gate — all required layers passed or approved exception.                                                 |
 
 ### Layer 1 — Input Validation (live)
 
@@ -49,6 +49,21 @@ Payload failures carry `AI_DETECTION_PAYLOAD__<zod_code>` or `SENSOR_FRAME_PAYLO
 
 **Note on the AI detection wire schema.** The TS `DetectionClass` enum in `@aip/shared-contracts/enums` uses long names (`pavement_crack`, `snowbank_violation`, `surface_anomaly`) but the Python AI publisher emits the short names (`crack`, `snowbank`, `anomaly`). L2 validates the wire format that actually flows, so the validator-side schema mirrors the publisher in `services/ai-inference/src/models/events.py`. Reconciling the TS enum with the wire format is its own ticket.
 
+### Layer 3 — Business Rules (live)
+
+SOP-driven policy. Configurable via `createBusinessRulesLayer({ thresholds })` (deep-partial override on top of the defaults in `03-business-rules/sop-thresholds.ts`, which mirror `data/seed/reference/sop-baseline.json`). Rules only fire when the relevant metadata field is present — L3 is policy, not schema (that's L2's job).
+
+| Detector class | Rule                                                                           | Failure code                          |
+| -------------- | ------------------------------------------------------------------------------ | ------------------------------------- |
+| `fod`          | `metadata.object_dimension_cm ≥ 2`                                             | `FOD_BELOW_MIN_DIMENSION`             |
+| `fod`          | severity matches SOP severity-by-location for `metadata.location_category`     | `FOD_LOCATION_SEVERITY_MISMATCH`      |
+| `crack`        | severity matches the SOP band for `metadata.crack_width_mm`                    | `CRACK_SEVERITY_BAND_MISMATCH`        |
+| `snowbank`     | `metadata.snowbank_height_cm ≤ 240`                                            | `SNOWBANK_HEIGHT_OVER_MAX`            |
+| `snowbank`     | `metadata.setback_m ≥` runway/taxiway minimum based on `metadata.surface_kind` | `SNOWBANK_SETBACK_BELOW_MIN`          |
+| `wildlife`     | severity ≥ `high` when `metadata.species ∈ wildlife.highRiskClasses`           | `WILDLIFE_HIGH_RISK_SEVERITY_TOO_LOW` |
+
+Sensor frame events and `anomaly` detections pass L3 unconditionally (no SOP-driven rules apply). All failures are collected into `details.failures` in a single pass; top-level `error_code` is the first failure.
+
 ## Endpoints
 
 | Method | Path        | Returns                                         |
@@ -57,7 +72,7 @@ Payload failures carry `AI_DETECTION_PAYLOAD__<zod_code>` or `SENSOR_FRAME_PAYLO
 | GET    | `/ready`    | 200 ready                                       |
 | POST   | `/validate` | `{ run_id, layers: [...], certified: boolean }` |
 
-`POST /validate` accepts `{ submission_id, payload }` and runs the configured layer list. The HTTP layer parses the body via `ValidationSubmissionRequest` from `@aip/shared-contracts`. L1 (T-406) and L2 (T-407) are live — production runs reject malformed envelopes and schema-violating payloads before reaching L3. The remaining layers are still stubs returning `passed: true`; T-408+ replaces them with real per-domain logic.
+`POST /validate` accepts `{ submission_id, payload }` and runs the configured layer list. The HTTP layer parses the body via `ValidationSubmissionRequest` from `@aip/shared-contracts`. L1 (T-406), L2 (T-407), and L3 (T-408) are live — production runs reject malformed envelopes, schema-violating payloads, and SOP-violating detections before reaching L4. The remaining layers are still stubs returning `passed: true`; T-409+ replaces them with real per-domain logic.
 
 Three Prometheus metrics are exposed on `GET /metrics`:
 
