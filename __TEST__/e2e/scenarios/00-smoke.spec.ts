@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { seedAuth } from "../fixtures/auth-fixture";
 
 test.describe("smoke", () => {
+  test.beforeEach(async ({ page }) => {
+    await seedAuth(page);
+  });
+
   test("index page renders airport list with link to map", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Live Ops" })).toBeVisible();

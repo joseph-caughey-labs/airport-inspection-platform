@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { seedAuth } from "../fixtures/auth-fixture";
 import { aiDetection, installWsFixture, presenceSnapshot } from "../fixtures/ws-fixture";
 
 const AIRPORT_ID = "11111111-1111-1111-1111-aaaaaaaaaaaa";
@@ -39,6 +40,10 @@ const RESPONDER = "77777777-7777-7777-7777-777777777777";
  * minutes.
  */
 test.describe("scenario 07 — FOD on active runway", () => {
+  test.beforeEach(async ({ page }) => {
+    await seedAuth(page);
+  });
+
   test("a critical FOD detection appears in the operator alert feed", async ({ page }) => {
     const fixture = await installWsFixture(page);
     await page.goto(`/airports/${AIRPORT_ID}`);
