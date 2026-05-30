@@ -8,6 +8,7 @@ import { ConsumerOrchestrator, RedisSubscriber } from "./consumers/index.js";
 import { DedupStore, withIdempotencyDedup } from "./dedup/index.js";
 import { OutboxWorker, createPersistHandler } from "./persistence/index.js";
 import { ReplayQueue, WatermarkTracker, withPrioritization } from "./prioritization/index.js";
+import { ReplayQueueWorker } from "./replay/worker.js";
 
 async function main(): Promise<void> {
   const logger = createLogger({ service: "event-pipeline" });
@@ -87,6 +88,20 @@ async function main(): Promise<void> {
     batchSize: Number(process.env["OUTBOX_BATCH_SIZE"] ?? 100),
   });
 
+  // ── Replay queue worker (T-415) ──────────────────────────────────
+  // Drains the prioritization wrapper's late-beyond-window queue and
+  // re-dispatches each item straight to the persist handler. Skips
+  // the prioritization wrapper on purpose — re-running the watermark
+  // check on a known-late frame would loop forever.
+  const replayWorker = new ReplayQueueWorker({
+    queue: replayQueue,
+    handler: persistHandler,
+    logger,
+    registry,
+    intervalMs: Number(process.env["REPLAY_INTERVAL_MS"] ?? 500),
+    batchSize: Number(process.env["REPLAY_BATCH_SIZE"] ?? 50),
+  });
+
   // ── AI detection bridge (T-310) ──────────────────────────────────
   // psubscribes to ai.detection.*.emitted and forwards each event into
   // the broadcast outbox so the operator dashboard sees AI detections
@@ -111,13 +126,14 @@ async function main(): Promise<void> {
   if (process.env["CONSUMERS_DISABLED"] !== "true") {
     await subscriber.start();
     outboxWorker.start();
+    replayWorker.start();
     if (aiDetectionBridge) {
       await aiDetectionBridge.start();
       logger.info("ai-detection bridge started");
     } else {
       logger.warn("DEFAULT_AIRPORT_ID unset — ai-detection bridge not started");
     }
-    logger.info("event-pipeline consumers + outbox worker started");
+    logger.info("event-pipeline consumers + outbox + replay workers started");
   } else {
     logger.warn("consumers disabled via CONSUMERS_DISABLED");
   }
@@ -127,6 +143,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     logger.warn({ signal }, "shutting down");
     if (aiDetectionBridge) await aiDetectionBridge.stop();
+    await replayWorker.stop();
     await outboxWorker.stop();
     await subscriber.stop();
     await app.close();
