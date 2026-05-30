@@ -24,8 +24,15 @@
 import { Role, type Role as RoleType } from "@aip/shared-contracts";
 import type { JwtSigner } from "@aip/auth-jwt";
 import { AuthJwtError } from "@aip/auth-jwt";
-import type { FastifyInstance } from "fastify";
+import {
+  buildSecurityEvent,
+  type SecurityEventPublisher,
+  type SecurityEventType,
+} from "@aip/security-events";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
+
+const SOURCE = { service: "api-gateway" };
 
 export interface DirectoryUser {
   id: string;
@@ -48,6 +55,12 @@ export interface RegisterAuthRoutesOptions {
    * always pass a value to keep brute-force budgets tight.
    */
   authMaxPerMinute?: number;
+  /**
+   * Security event publisher (T-506). Required so the audit chain
+   * captures every login + refresh attempt — success and failure.
+   * Tests can drop in a recording publisher.
+   */
+  securityEvents: SecurityEventPublisher;
 }
 
 const LoginBody = z.object({
@@ -67,16 +80,43 @@ export function registerAuthRoutes(app: FastifyInstance, opts: RegisterAuthRoute
       ? { rateLimit: { max: opts.authMaxPerMinute, timeWindow: "1 minute" } }
       : {};
 
+  // Tiny helper — every auth event needs the same envelope shape.
+  // Don't await: emission failure must never block the user.
+  const emitAuthEvent = (
+    req: FastifyRequest,
+    type: SecurityEventType,
+    actorUserId: string | null,
+    payload: Record<string, unknown>,
+  ): void => {
+    void opts.securityEvents.emit(
+      buildSecurityEvent({
+        event_type: type,
+        source: SOURCE,
+        actor_user_id: actorUserId,
+        subject_id: actorUserId,
+        ...(req.request_id ? { correlation_id: req.request_id } : {}),
+        payload,
+      }),
+    );
+  };
+
   app.post("/api/v1/auth/login", { config: authRateLimit }, async (req, reply) => {
     const parsed = LoginBody.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send(errorEnvelope("validation_failed", "invalid login body"));
     }
-    const user = await opts.directory.findByEmail(parsed.data.email.toLowerCase());
+    const email = parsed.data.email.toLowerCase();
+    const user = await opts.directory.findByEmail(email);
     if (!user) {
       // Don't disclose whether the email exists — return 401 either
       // way. The actual demo seeds three users; any other email
-      // results in this branch.
+      // results in this branch. Audit the attempt so brute-force
+      // shows up in the hash chain (T-506).
+      emitAuthEvent(req, "auth.login.failed", null, {
+        email,
+        ip: req.ip,
+        reason: "no_such_user",
+      });
       return reply.code(401).send(errorEnvelope("unauthorized", "invalid credentials"));
     }
     const access_token = await opts.signer.signAccess({
@@ -84,6 +124,11 @@ export function registerAuthRoutes(app: FastifyInstance, opts: RegisterAuthRoute
       role: user.role,
     });
     const refresh_token = await opts.signer.signRefresh({ user_id: user.id });
+    emitAuthEvent(req, "auth.login.succeeded", user.id, {
+      email: user.email,
+      role: user.role,
+      ip: req.ip,
+    });
     return reply.send({
       access_token,
       refresh_token,
@@ -102,15 +147,24 @@ export function registerAuthRoutes(app: FastifyInstance, opts: RegisterAuthRoute
       if (!user) {
         // The refresh token referenced a user that no longer
         // exists (deleted, etc.). 401 is the right answer.
+        emitAuthEvent(req, "auth.refresh.failed", verified.user_id, {
+          ip: req.ip,
+          reason: "user_no_longer_exists",
+        });
         return reply.code(401).send(errorEnvelope("unauthorized", "user no longer exists"));
       }
       const access_token = await opts.signer.signAccess({
         user_id: user.id,
         role: user.role,
       });
+      emitAuthEvent(req, "auth.refresh.succeeded", user.id, { ip: req.ip });
       return reply.send({ access_token });
     } catch (err) {
       if (err instanceof AuthJwtError) {
+        emitAuthEvent(req, "auth.refresh.failed", null, {
+          ip: req.ip,
+          reason: err.code,
+        });
         return reply.code(401).send(errorEnvelope("unauthorized", err.message, { code: err.code }));
       }
       throw err;
