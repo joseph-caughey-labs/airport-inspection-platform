@@ -1,5 +1,5 @@
 import { correlationHook, type Logger } from "@aip/logger";
-import { type Registry } from "@aip/metrics";
+import { installMetrics, type Registry } from "@aip/metrics";
 import { ValidationSubmissionRequest } from "@aip/shared-contracts";
 import Fastify from "fastify";
 import {
@@ -34,16 +34,12 @@ export async function buildApp({
   });
 
   app.addHook("onRequest", correlationHook());
+  installMetrics({ app, registry });
 
   const orchestratorMetrics = metrics ?? createOrchestratorMetrics(registry);
 
   app.get("/health", async () => ({ status: "ok" }));
   app.get("/ready", async () => ({ status: "ready" }));
-
-  app.get("/metrics", async (_req, reply) => {
-    reply.header("content-type", registry.contentType);
-    return registry.metrics();
-  });
 
   app.post("/validate", async (req, reply) => {
     const parsed = ValidationSubmissionRequest.safeParse(req.body);

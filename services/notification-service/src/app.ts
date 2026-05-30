@@ -1,4 +1,5 @@
 import { correlationHook, type Logger } from "@aip/logger";
+import { installMetrics, type Registry as PromRegistry } from "@aip/metrics";
 import { checkHealth, type RedisClient } from "@aip/redis-client";
 import Fastify from "fastify";
 import type { ChannelRegistry } from "./channels/registry.js";
@@ -12,15 +13,27 @@ export interface BuildAppOptions {
    * can surface the in-memory DLQ contents without coupling the
    * registry to the DLQ shape. */
   webhook?: WebhookChannel;
+  /** Prom registry. When omitted, /metrics is not exposed. The
+   * channel registry uses its own internal counters; this is the
+   * shared scrape surface for the platform's standard RED
+   * metrics. */
+  promRegistry?: PromRegistry;
 }
 
-export async function buildApp({ logger, redis, registry, webhook }: BuildAppOptions) {
+export async function buildApp({
+  logger,
+  redis,
+  registry,
+  webhook,
+  promRegistry,
+}: BuildAppOptions) {
   const app = Fastify({
     logger: { level: logger.level },
     disableRequestLogging: false,
   });
 
   app.addHook("onRequest", correlationHook());
+  if (promRegistry) installMetrics({ app, registry: promRegistry });
 
   app.get("/health", async () => ({ status: "ok" }));
 

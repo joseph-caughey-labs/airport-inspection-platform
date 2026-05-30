@@ -1,5 +1,5 @@
 import { correlationHook, type Logger } from "@aip/logger";
-import { type Registry } from "@aip/metrics";
+import { installMetrics, type Registry } from "@aip/metrics";
 import Fastify from "fastify";
 import { authDecode } from "./auth/middleware.js";
 import { errorHandler, notFoundHandler } from "./errors/handler.js";
@@ -25,18 +25,18 @@ export async function buildApp({ logger, registry }: BuildAppOptions) {
   app.setErrorHandler(errorHandler);
   app.setNotFoundHandler(notFoundHandler);
 
+  // ── Metrics (T-502) ──────────────────────────────────────────────
+  // Wires the RED triple onResponse + registers GET /metrics. Health
+  // and scrape paths are excluded from RED so they don't dominate
+  // the counters.
+  installMetrics({ app, registry });
+
   // ── Liveness and readiness ───────────────────────────────────────
   // api-gateway has no downstream DB dependency, so /ready is the same
   // as /health for now. Once we proxy to dependent services in T-117+
   // we can extend /ready to probe them.
   app.get("/health", async () => ({ status: "ok" }));
   app.get("/ready", async () => ({ status: "ready" }));
-
-  // ── Metrics ──────────────────────────────────────────────────────
-  app.get("/metrics", async (_req, reply) => {
-    reply.header("content-type", registry.contentType);
-    return registry.metrics();
-  });
 
   // ── API routes ───────────────────────────────────────────────────
   await app.register(pingRoute);

@@ -159,6 +159,9 @@ importers:
       '@types/node':
         specifier: ^22.7.5
         version: 22.19.19
+      fastify:
+        specifier: ^5.0.0
+        version: 5.8.5
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
@@ -253,6 +256,9 @@ importers:
       '@aip/logger':
         specifier: workspace:*
         version: link:../../packages/logger
+      '@aip/metrics':
+        specifier: workspace:*
+        version: link:../../packages/metrics
       '@aip/postgres-client':
         specifier: workspace:*
         version: link:../../packages/postgres-client
@@ -385,6 +391,9 @@ importers:
       '@aip/logger':
         specifier: workspace:*
         version: link:../../packages/logger
+      '@aip/metrics':
+        specifier: workspace:*
+        version: link:../../packages/metrics
       '@aip/redis-client':
         specifier: workspace:*
         version: link:../../packages/redis-client

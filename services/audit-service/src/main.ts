@@ -1,4 +1,5 @@
 import { createLogger } from "@aip/logger";
+import { createRegistry } from "@aip/metrics";
 import { createPgPool } from "@aip/postgres-client";
 import { createRedis } from "@aip/redis-client";
 import { buildApp } from "./app.js";
@@ -7,6 +8,7 @@ import { IncidentTransitionsSubscriber } from "./subscribers/incident-transition
 
 async function main(): Promise<void> {
   const logger = createLogger({ service: "audit-service" });
+  const registry = createRegistry({ service: "audit-service" });
   // Two Redis clients: one for the subscriber loop (cannot share
   // with command/PUBLISH usage) and one for healthcheck PINGs.
   const redisSub = createRedis({
@@ -33,7 +35,7 @@ async function main(): Promise<void> {
   });
   await subscriber.start();
 
-  const app = await buildApp({ logger, redis: redisHealth, pool });
+  const app = await buildApp({ logger, redis: redisHealth, pool, registry });
   const port = Number(process.env["PORT"] ?? 3007);
   await app.listen({ port, host: "0.0.0.0" });
   logger.info({ port }, "audit-service ready");

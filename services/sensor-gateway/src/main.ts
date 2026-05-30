@@ -1,4 +1,5 @@
 import { createLogger } from "@aip/logger";
+import { createRegistry as createPromRegistry } from "@aip/metrics";
 import { buildChannelName, createRedis } from "@aip/redis-client";
 import { buildApp } from "./app.js";
 import { CameraSimulator, SimulatorRegistry } from "./simulators/index.js";
@@ -40,6 +41,7 @@ async function main(): Promise<void> {
   });
 
   const registry = new SimulatorRegistry();
+  const promRegistry = createPromRegistry({ service: "sensor-gateway" });
   const channel = buildChannelName("sensor", "frame", "captured");
 
   for (const cam of BASELINE_CAMERAS) {
@@ -54,7 +56,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const app = await buildApp({ logger, redis });
+  const app = await buildApp({ logger, redis, registry: promRegistry });
   const port = Number(process.env["PORT"] ?? 3003);
   await app.listen({ port, host: "0.0.0.0" });
 

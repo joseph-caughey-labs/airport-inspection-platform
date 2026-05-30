@@ -1,4 +1,5 @@
 import { correlationHook, type Logger } from "@aip/logger";
+import { installMetrics, type Registry } from "@aip/metrics";
 import { checkHealth, type PgPool } from "@aip/postgres-client";
 import Fastify from "fastify";
 import type { IncidentEventPublisher } from "./events/index.js";
@@ -8,6 +9,8 @@ import { registerIncidentRoutes } from "./routes/incidents.js";
 export interface BuildAppOptions {
   logger: Logger;
   pool: PgPool;
+  /** Prom registry. When omitted, /metrics is not exposed. */
+  registry?: Registry;
   /**
    * Override the repository. Defaults to the in-memory implementation
    * — the Postgres-backed repository lands as part of T-404 once the
@@ -26,12 +29,13 @@ export interface BuildAppOptions {
   events?: IncidentEventPublisher;
 }
 
-export async function buildApp({ logger, pool, repository, events }: BuildAppOptions) {
+export async function buildApp({ logger, pool, repository, events, registry }: BuildAppOptions) {
   const app = Fastify({
     logger: { level: logger.level },
     disableRequestLogging: false,
   });
   app.addHook("onRequest", correlationHook());
+  if (registry) installMetrics({ app, registry });
   const repo = repository ?? new InMemoryIncidentRepository();
 
   app.get("/health", async () => ({ status: "ok" }));
