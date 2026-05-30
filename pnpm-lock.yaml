@@ -555,6 +555,9 @@ importers:
 
   services/ws-broadcaster:
     dependencies:
+      '@aip/auth-jwt':
+        specifier: workspace:*
+        version: link:../../packages/auth-jwt
       '@aip/logger':
         specifier: workspace:*
         version: link:../../packages/logger

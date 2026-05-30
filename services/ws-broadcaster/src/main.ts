@@ -1,3 +1,4 @@
+import { createJwtSigner } from "@aip/auth-jwt";
 import { createLogger } from "@aip/logger";
 import { createRegistry } from "@aip/metrics";
 import { createPgPool } from "@aip/postgres-client";
@@ -8,6 +9,13 @@ import { RedisBridge } from "./redis-bridge.js";
 async function main(): Promise<void> {
   const logger = createLogger({ service: "ws-broadcaster" });
   const registry = createRegistry({ service: "ws-broadcaster" });
+  // Share the JWT signer with api-gateway via the same JWT_SECRET
+  // env var. A future split deployment would move both behind a
+  // central auth service with asymmetric (RS256/EdDSA) keys.
+  const signer = createJwtSigner({
+    secret: process.env["JWT_SECRET"] ?? "dev-only-secret-shared-with-api-gateway-32-bytes-min",
+    issuer: "aip-api-gateway",
+  });
 
   // Two Redis clients: pattern-subscribe needs its own connection,
   // separate from any command/publish path we add later.
@@ -33,6 +41,7 @@ async function main(): Promise<void> {
     redis,
     pool,
     registry,
+    signer,
     hydrationDefaultLimit: Number(process.env["WS_HYDRATION_LIMIT"] ?? 50),
   });
 

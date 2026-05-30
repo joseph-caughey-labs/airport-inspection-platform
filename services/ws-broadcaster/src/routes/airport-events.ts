@@ -1,4 +1,6 @@
+import { AuthJwtError, type JwtSigner } from "@aip/auth-jwt";
 import { type Logger } from "@aip/logger";
+import { type Role } from "@aip/shared-contracts";
 import { type FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { type FrameHydrator } from "../channels/hydrator.js";
@@ -14,14 +16,66 @@ export interface AirportEventsRouteOptions {
   registry: ChannelRegistry;
   hydrator: FrameHydrator;
   logger: Logger;
+  /**
+   * JWT signer used to verify the access token on the WS upgrade.
+   * Required — there is no "auth disabled" mode here. Tests pass
+   * a test signer + mint a token; production wires the same signer
+   * the api-gateway uses.
+   */
+  signer: JwtSigner;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const VALID_ROLES: readonly ClientRole[] = ["operator", "supervisor", "viewer", "system"];
 
-function parseRole(raw: string | undefined): ClientRole {
-  if (!raw) return "viewer";
-  return (VALID_ROLES as readonly string[]).includes(raw) ? (raw as ClientRole) : "viewer";
+/**
+ * Map the platform `Role` (operator/reviewer/admin) onto the
+ * broadcaster's `ClientRole` (operator/supervisor/viewer/system).
+ *
+ *   - admin    → supervisor   (oversees the deck; sees everything)
+ *   - reviewer → supervisor   (same elevation for the WS surface)
+ *   - operator → operator
+ *
+ * The ClientRole is used by the channel registry's `allow()` filter
+ * to scope which event_types reach which subscribers — for the demo
+ * the default filter lets everything through, but the mapping is in
+ * place for the filter to evolve.
+ */
+function clientRoleFor(authRole: Role): ClientRole {
+  if (authRole === "admin" || authRole === "reviewer") return "supervisor";
+  return "operator";
+}
+
+/**
+ * Browsers cannot set arbitrary headers on the WebSocket upgrade
+ * request, so we accept the access token from either of two places:
+ *
+ *   1. `Sec-WebSocket-Protocol: bearer.<token>` — preferred. The
+ *      header IS settable in the browser WebSocket API (it's the
+ *      `protocols` argument). Server echoes the same protocol back
+ *      on accept so the handshake completes.
+ *   2. `?access_token=<token>` query string — fallback for non-
+ *      browser clients (curl-style smoke tests).
+ *
+ * Production should add a CSRF-style check on the query-string path
+ * (referrer + same-origin) since query strings can leak to access
+ * logs. Out of scope for the demo.
+ */
+function extractToken(req: {
+  headers: Record<string, string | string[] | undefined>;
+  query: { access_token?: string };
+}): string | undefined {
+  const proto = req.headers["sec-websocket-protocol"];
+  const candidates = typeof proto === "string" ? proto.split(",").map((s) => s.trim()) : [];
+  for (const c of candidates) {
+    if (c.startsWith("bearer.")) {
+      const token = c.slice("bearer.".length);
+      if (token.length > 0) return token;
+    }
+  }
+  if (typeof req.query.access_token === "string" && req.query.access_token.length > 0) {
+    return req.query.access_token;
+  }
+  return undefined;
 }
 
 /**
@@ -48,14 +102,35 @@ export function registerAirportEventsRoute(
 ): void {
   app.get<{
     Params: { airportId: string };
-    Querystring: { role?: string; hydrate?: string; last_event_id?: string };
+    Querystring: { hydrate?: string; last_event_id?: string; access_token?: string };
   }>("/ws/v1/airport/:airportId/events", { websocket: true }, async (socket, req) => {
     const airportId = req.params.airportId;
     if (!UUID_RE.test(airportId)) {
       socket.close(4400, "invalid airport id");
       return;
     }
-    const role = parseRole(req.query.role);
+
+    // T-504b — verify JWT before the connection becomes useful.
+    // 4401 mirrors HTTP 401 (the 4xxx range is application-defined
+    // in the WS close-code spec).
+    const token = extractToken(req);
+    if (!token) {
+      socket.close(4401, "missing access token");
+      return;
+    }
+    let authRole: Role;
+    let userId: string;
+    try {
+      const verified = await opts.signer.verifyAccess(token);
+      authRole = verified.role;
+      userId = verified.user_id;
+    } catch (err) {
+      const reason = err instanceof AuthJwtError ? err.code : "invalid_token";
+      socket.close(4401, `auth failed: ${reason}`);
+      return;
+    }
+    const role = clientRoleFor(authRole);
+
     const hydrateLimit = req.query.hydrate ? Number(req.query.hydrate) : undefined;
     const lastEventId = req.query.last_event_id?.trim();
 
@@ -66,6 +141,12 @@ export function registerAirportEventsRoute(
       send: (data) => socket.send(data),
       close: (code, reason) => socket.close(code, reason),
     };
+
+    // Attach the authenticated user id to logs for postmortems.
+    opts.logger.info(
+      { airportId, user_id: userId, role, auth_role: authRole },
+      "ws subscriber authenticated",
+    );
 
     try {
       if (lastEventId) {

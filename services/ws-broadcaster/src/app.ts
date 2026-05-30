@@ -1,3 +1,4 @@
+import { type JwtSigner } from "@aip/auth-jwt";
 import { correlationHook, type Logger } from "@aip/logger";
 import { installMetrics, type Registry } from "@aip/metrics";
 import { type PgPool } from "@aip/postgres-client";
@@ -14,6 +15,13 @@ export interface BuildAppOptions {
   registry: Registry;
   /** Default hydration size (clients may override via ?hydrate=). */
   hydrationDefaultLimit?: number;
+  /**
+   * JWT signer used to verify the access token on every WS upgrade
+   * (T-504b). Required — there is no auth-disabled mode. Tests
+   * construct a test signer and mint a short-lived token for the
+   * connection.
+   */
+  signer: JwtSigner;
 }
 
 export interface BuiltApp {
@@ -66,7 +74,12 @@ export async function buildApp(opts: BuildAppOptions): Promise<BuiltApp> {
     });
   });
 
-  registerAirportEventsRoute(app, { registry: channelRegistry, hydrator, logger: opts.logger });
+  registerAirportEventsRoute(app, {
+    registry: channelRegistry,
+    hydrator,
+    logger: opts.logger,
+    signer: opts.signer,
+  });
 
   return { app, channelRegistry };
 }
