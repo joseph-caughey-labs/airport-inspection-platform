@@ -1,4 +1,4 @@
-import { type Logger } from "@aip/logger";
+import { correlationHook, type Logger } from "@aip/logger";
 import { checkHealth as checkPostgres, type PgPool } from "@aip/postgres-client";
 import { checkHealth as checkRedis, type RedisClient } from "@aip/redis-client";
 import Fastify from "fastify";
@@ -56,6 +56,8 @@ export async function buildApp(opts: BuildAppOptions) {
     logger: { level: logger.level },
     disableRequestLogging: false,
   });
+
+  app.addHook("onRequest", correlationHook());
 
   app.get("/health", async () => ({ status: "ok" }));
 

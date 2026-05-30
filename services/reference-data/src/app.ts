@@ -1,5 +1,5 @@
 import { schema } from "@aip/db-schema";
-import { type Logger } from "@aip/logger";
+import { correlationHook, type Logger } from "@aip/logger";
 import { checkHealth, type PgPool } from "@aip/postgres-client";
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -23,6 +23,8 @@ export async function buildApp({ logger, pool }: BuildAppOptions) {
     logger: { level: logger.level },
     disableRequestLogging: false,
   });
+
+  app.addHook("onRequest", correlationHook());
   const db = drizzle(pool, { schema });
 
   app.get("/health", async () => ({ status: "ok" }));

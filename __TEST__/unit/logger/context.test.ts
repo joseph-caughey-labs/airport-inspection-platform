@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { getContext, withContext } from "../../../packages/logger/src/index.js";
+import { enterContext, getContext, withContext } from "../../../packages/logger/src/index.js";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 describe("withContext", () => {
   it("returns undefined outside any context scope", () => {
@@ -56,5 +57,45 @@ describe("withContext", () => {
   it("returns the value of the inner function", () => {
     const result = withContext({}, () => 42);
     expect(result).toBe(42);
+  });
+});
+
+describe("enterContext", () => {
+  it("sets the context for the rest of the current async chain", async () => {
+    // Wrap in an isolated AsyncLocalStorage entry so the enterWith
+    // call doesn't leak across tests.
+    const isolation = new AsyncLocalStorage<undefined>();
+    await isolation.run(undefined, async () => {
+      enterContext({ request_id: "enter-1", correlation_id: "corr-1" });
+      const ctx = getContext();
+      expect(ctx?.request_id).toBe("enter-1");
+      expect(ctx?.correlation_id).toBe("corr-1");
+      // Survives an awaited async boundary in the same chain.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(getContext()?.request_id).toBe("enter-1");
+    });
+  });
+
+  it("returns the resolved context (auto-generated ids when missing)", async () => {
+    const isolation = new AsyncLocalStorage<undefined>();
+    await isolation.run(undefined, async () => {
+      const ctx = enterContext({});
+      expect(ctx.request_id).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      );
+      expect(ctx.correlation_id).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      );
+    });
+  });
+
+  it("inherits the outer correlation_id when only request_id is supplied", async () => {
+    const isolation = new AsyncLocalStorage<undefined>();
+    await isolation.run(undefined, async () => {
+      enterContext({ correlation_id: "shared-corr" });
+      const inner = enterContext({ request_id: "inner-req" });
+      expect(inner.correlation_id).toBe("shared-corr");
+      expect(inner.request_id).toBe("inner-req");
+    });
   });
 });
