@@ -1,6 +1,6 @@
 {
   "name": "@aip/notification-service",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Notification fanout — in-app, webhook, email-stub. This PR adds the shell; real channel implementations land in T-413.",
   "license": "SEE LICENSE IN ../../LICENSE",
