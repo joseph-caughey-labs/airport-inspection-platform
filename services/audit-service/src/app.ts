@@ -1,4 +1,5 @@
 import { correlationHook, type Logger } from "@aip/logger";
+import { installMetrics, type Registry } from "@aip/metrics";
 import { checkHealth as checkPostgres, type PgPool } from "@aip/postgres-client";
 import { checkHealth as checkRedis, type RedisClient } from "@aip/redis-client";
 import Fastify from "fastify";
@@ -8,6 +9,9 @@ export interface BuildAppOptions {
   logger: Logger;
   redis: RedisClient;
   pool: PgPool;
+  /** Prom registry. When omitted, /metrics is not exposed (used by
+   * unit tests that don't care about scrape surface). */
+  registry?: Registry;
   /** Max events returned per list page. Default 100. */
   listPageLimit?: number;
   /** Max events scanned by the verify endpoint per call. Default 1000. */
@@ -58,6 +62,7 @@ export async function buildApp(opts: BuildAppOptions) {
   });
 
   app.addHook("onRequest", correlationHook());
+  if (opts.registry) installMetrics({ app, registry: opts.registry });
 
   app.get("/health", async () => ({ status: "ok" }));
 

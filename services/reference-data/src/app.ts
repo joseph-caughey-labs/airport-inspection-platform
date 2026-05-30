@@ -1,5 +1,6 @@
 import { schema } from "@aip/db-schema";
 import { correlationHook, type Logger } from "@aip/logger";
+import { installMetrics, type Registry } from "@aip/metrics";
 import { checkHealth, type PgPool } from "@aip/postgres-client";
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -8,6 +9,8 @@ import Fastify from "fastify";
 export interface BuildAppOptions {
   logger: Logger;
   pool: PgPool;
+  /** Prom registry. When omitted, /metrics is not exposed. */
+  registry?: Registry;
 }
 
 /**
@@ -18,13 +21,14 @@ export interface BuildAppOptions {
  * shared `@aip/logger`; Fastify's per-request logs use its default
  * pino instance configured below.
  */
-export async function buildApp({ logger, pool }: BuildAppOptions) {
+export async function buildApp({ logger, pool, registry }: BuildAppOptions) {
   const app = Fastify({
     logger: { level: logger.level },
     disableRequestLogging: false,
   });
 
   app.addHook("onRequest", correlationHook());
+  if (registry) installMetrics({ app, registry });
   const db = drizzle(pool, { schema });
 
   app.get("/health", async () => ({ status: "ok" }));

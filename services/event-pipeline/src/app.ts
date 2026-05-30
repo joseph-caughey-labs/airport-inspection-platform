@@ -1,5 +1,5 @@
 import { correlationHook, type Logger } from "@aip/logger";
-import { type Registry } from "@aip/metrics";
+import { installMetrics, type Registry } from "@aip/metrics";
 import { checkHealth as checkPostgres, type PgPool } from "@aip/postgres-client";
 import { checkHealth as checkRedis, type RedisClient } from "@aip/redis-client";
 import Fastify from "fastify";
@@ -25,6 +25,7 @@ export async function buildApp({ logger, redis, pool, registry }: BuildAppOption
   });
 
   app.addHook("onRequest", correlationHook());
+  installMetrics({ app, registry });
 
   app.get("/health", async () => ({ status: "ok" }));
 
@@ -39,11 +40,6 @@ export async function buildApp({ logger, redis, pool, registry }: BuildAppOption
       });
     }
     return { status: "ready", redis: redisHealth, postgres: pgHealth };
-  });
-
-  app.get("/metrics", async (_req, reply) => {
-    reply.header("content-type", registry.contentType);
-    return registry.metrics();
   });
 
   return app;

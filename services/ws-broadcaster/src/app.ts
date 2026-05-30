@@ -1,9 +1,9 @@
 import { correlationHook, type Logger } from "@aip/logger";
+import { installMetrics, type Registry } from "@aip/metrics";
 import { type PgPool } from "@aip/postgres-client";
 import { checkHealth, type RedisClient } from "@aip/redis-client";
 import websocketPlugin from "@fastify/websocket";
 import Fastify from "fastify";
-import { type Registry } from "prom-client";
 import { ChannelRegistry, FrameHydrator } from "./channels/index.js";
 import { registerAirportEventsRoute } from "./routes/airport-events.js";
 
@@ -34,6 +34,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<BuiltApp> {
   });
 
   app.addHook("onRequest", correlationHook());
+  installMetrics({ app, registry: opts.registry });
   await app.register(websocketPlugin);
 
   const channelRegistry = new ChannelRegistry({ registry: opts.registry });
@@ -56,11 +57,6 @@ export async function buildApp(opts: BuildAppOptions): Promise<BuiltApp> {
       });
     }
     return { status: "ready", latency_ms: health.latency_ms };
-  });
-
-  app.get("/metrics", async (_req, reply) => {
-    reply.header("content-type", opts.registry.contentType);
-    return opts.registry.metrics();
   });
 
   // Placeholder echo channel — still useful for verifying the upgrade path through NGINX.

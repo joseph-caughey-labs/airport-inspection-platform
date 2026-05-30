@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@aip/logger": "workspace:*",
+    "@aip/metrics": "workspace:*",
     "@aip/postgres-client": "workspace:*",
     "@aip/redis-client": "workspace:*",
     "@aip/shared-contracts": "workspace:*",
