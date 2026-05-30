@@ -46,17 +46,34 @@ export interface IncidentApiOptions {
   fetchFn?: typeof fetch;
   /** Base URL for the incident-service. Empty string uses same-origin. */
   baseUrl?: string;
+  /**
+   * Returns the current access token (or null when unauthenticated).
+   * Called per request so a refresh between calls is observed
+   * without the API client re-subscribing to the auth store.
+   */
+  tokenProvider?: () => string | null;
+  /**
+   * Called on a 401. Implementations should attempt to refresh and
+   * return a fresh access token, or null to give up (which leaves
+   * the 401 to surface to the caller). The API client retries the
+   * request exactly once.
+   */
+  onUnauthorized?: () => Promise<string | null>;
 }
 
 export class IncidentApi {
   private readonly fetchFn: typeof fetch;
   private readonly baseUrl: string;
+  private readonly tokenProvider: () => string | null;
+  private readonly onUnauthorized: (() => Promise<string | null>) | undefined;
 
   constructor(opts: IncidentApiOptions = {}) {
     // Bind fetch to globalThis so the standard fetch isn't called as a
     // method of `IncidentApi` (which would lose its receiver).
     this.fetchFn = opts.fetchFn ?? globalThis.fetch.bind(globalThis);
     this.baseUrl = opts.baseUrl ?? "";
+    this.tokenProvider = opts.tokenProvider ?? (() => null);
+    this.onUnauthorized = opts.onUnauthorized;
   }
 
   /**
@@ -99,11 +116,26 @@ export class IncidentApi {
   }
 
   private async post<T>(path: string, body: unknown): Promise<T> {
-    const res = await this.fetchFn(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const send = async (token: string | null): Promise<Response> => {
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (token) headers["authorization"] = `Bearer ${token}`;
+      return this.fetchFn(`${this.baseUrl}${path}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+    };
+
+    let res = await send(this.tokenProvider());
+    if (res.status === 401 && this.onUnauthorized) {
+      // Lazy refresh: ask the auth store to swap the access token,
+      // then retry exactly once. A second 401 falls through to the
+      // caller — the global guard will then bounce to /login.
+      const fresh = await this.onUnauthorized();
+      if (fresh) {
+        res = await send(fresh);
+      }
+    }
     if (!res.ok) {
       let parsed: IncidentApiErrorBody;
       try {

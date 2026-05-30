@@ -1,8 +1,18 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
+import { useAuthStore } from "~/stores/auth";
+import { useSystemStore } from "~/stores/system";
 
 const system = useSystemStore();
-const { connection, role, version } = storeToRefs(system);
+const auth = useAuthStore();
+const { connection, version } = storeToRefs(system);
+const { role, user, isAuthenticated } = storeToRefs(auth);
+const router = useRouter();
+
+async function onLogout(): Promise<void> {
+  auth.logout();
+  await router.push("/login");
+}
 </script>
 
 <template>
@@ -25,6 +35,22 @@ const { connection, role, version } = storeToRefs(system);
       <div class="flex items-center gap-3">
         <RoleBadge :role="role" />
         <StatusPill :state="connection" />
+        <span
+          v-if="isAuthenticated && user"
+          class="font-mono text-[11px] text-aip-muted"
+          data-testid="header-user"
+        >
+          {{ user.name }}
+        </span>
+        <button
+          v-if="isAuthenticated"
+          type="button"
+          class="rounded-sm border border-aip-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-aip-muted hover:text-aip-fg"
+          data-testid="header-logout"
+          @click="onLogout"
+        >
+          Sign out
+        </button>
       </div>
     </header>
 

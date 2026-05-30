@@ -8,6 +8,7 @@
  * fetch at the component layer.
  */
 import { computed, ref, watch, type Ref } from "vue";
+import { useAuthStore } from "~/stores/auth";
 import { AuditApi } from "~/utils/audit-api";
 import { buildIncidentTimeline, snapshotAt, type TimelineStep } from "~/utils/incident-timeline";
 
@@ -22,7 +23,22 @@ export function useIncidentTimeline(
   incidentId: Ref<string | undefined>,
   options: UseIncidentTimelineOptions = {},
 ) {
-  const api = options.api ?? new AuditApi(options.baseUrl ? { baseUrl: options.baseUrl } : {});
+  // When the test passes an explicit `api`, honour it untouched — the
+  // existing test suite mocks fetch through that injection point.
+  // Otherwise build a default client wired up to the auth store so
+  // every lineage call carries an Authorization header and lazily
+  // refreshes on 401.
+  let api: AuditApi;
+  if (options.api) {
+    api = options.api;
+  } else {
+    const auth = useAuthStore();
+    api = new AuditApi({
+      ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
+      tokenProvider: () => auth.accessToken,
+      onUnauthorized: () => auth.refresh(),
+    });
+  }
 
   const steps = ref<TimelineStep[]>([]);
   const cursor = ref(0);
