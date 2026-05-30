@@ -42,7 +42,7 @@ Sequential. Never reuse a number, even for superseded ADRs. Status field handles
 | [0008](0008-parity-10-layer-validation.md) | Parity 10-layer validation pipeline                   | Accepted            | Validation Engineer |
 | 0009                                       | HITL routing thresholds                               | _Draft (T-409)_     | Validation Engineer |
 | [0010](0010-audit-immutability.md)         | Audit immutability                                    | Accepted            | Database            |
-| 0011                                       | Input validation strategy                             | _Draft (T-505)_     | Security            |
+| [0011](0011-input-validation-and-auth.md)  | Input validation, JWT auth, and RBAC                  | Accepted            | Security            |
 | 0012                                       | Branching and release strategy                        | _Pending_           | Project Manager     |
 
 Status values: **Proposed**, **Accepted**, **Superseded by ADR-NNNN**, **Deprecated**.

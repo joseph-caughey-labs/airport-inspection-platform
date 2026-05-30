@@ -91,6 +91,28 @@ importers:
         specifier: ^2.1.10
         version: 2.2.12(typescript@5.9.3)
 
+  packages/auth-jwt:
+    dependencies:
+      '@aip/shared-contracts':
+        specifier: workspace:*
+        version: link:../shared-contracts
+      jose:
+        specifier: ^5.9.6
+        version: 5.10.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.7.5
+        version: 22.19.19
+      fastify:
+        specifier: ^5.0.0
+        version: 5.8.5
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.2
+        version: 2.1.9(@types/node@22.19.19)(happy-dom@15.11.7)(terser@5.48.0)
+
   packages/db-schema:
     dependencies:
       '@aip/postgres-client':
@@ -222,6 +244,9 @@ importers:
 
   services/api-gateway:
     dependencies:
+      '@aip/auth-jwt':
+        specifier: workspace:*
+        version: link:../../packages/auth-jwt
       '@aip/logger':
         specifier: workspace:*
         version: link:../../packages/logger
@@ -3867,6 +3892,9 @@ packages:
   jiti@2.7.0:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
+
+  jose@5.10.0:
+    resolution: {integrity: sha512-s+3Al/p9g32Iq+oqXxkW//7jk2Vig6FF1CFqzVXoTUXt2qz89YWbL+OwS17NFYEvxC35n0FKeGO2LGYSxeM2Gg==}
 
   js-beautify@1.15.4:
     resolution: {integrity: sha512-9/KXeZUKKJwqCXUdBxFJ3vPh467OCckSBmYDwSK/EtV090K+iMJ7zx2S3HLVDIWFQdqMIsZWbnaGiba18aWhaA==}
@@ -9026,6 +9054,8 @@ snapshots:
   jiti@1.21.7: {}
 
   jiti@2.7.0: {}
+
+  jose@5.10.0: {}
 
   js-beautify@1.15.4:
     dependencies:
