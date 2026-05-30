@@ -36,7 +36,7 @@ Sequential. Never reuse a number, even for superseded ADRs. Status field handles
 | [0002](0002-websockets-for-realtime.md)    | WebSockets for real-time operator updates             | Accepted            | Principal Architect |
 | [0003](0003-service-boundary-rationale.md) | Service boundary rationale (10 services + 1 frontend) | Accepted            | Principal Architect |
 | 0004                                       | AI inference simulation strategy                      | _Draft (T-301)_     | AI/ML Engineer      |
-| 0005                                       | Idempotency and retries                               | _Draft (T-503)_     | SRE                 |
+| [0005](0005-idempotency-and-retries.md)    | Idempotency, retries, and circuit breakers            | Accepted            | SRE                 |
 | 0006                                       | Event ordering and deduplication                      | _Draft (T-206)_     | Backend             |
 | 0007                                       | Edge / cloud separation                               | _Pending (Phase 5)_ | Principal Architect |
 | [0008](0008-parity-10-layer-validation.md) | Parity 10-layer validation pipeline                   | Accepted            | Validation Engineer |

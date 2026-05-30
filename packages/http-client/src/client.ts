@@ -1,3 +1,4 @@
+import { type CircuitBreaker } from "./circuit-breaker.js";
 import { HttpClientError, isRetryableStatus } from "./errors.js";
 
 export interface HttpClientOptions {
@@ -25,6 +26,24 @@ export interface HttpClientOptions {
    * Default: setTimeout-based.
    */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Per-dependency circuit breaker. When provided, every `.request()`
+   * call's FULL retry loop runs inside `breaker.execute()`. The
+   * breaker counts the request as one failure when retries are
+   * exhausted (not per attempt) — so `failureThreshold` is "logically
+   * failing requests", which is the operationally useful unit.
+   *
+   * Construct one breaker per downstream service / external API and
+   * share it across every client pointed at that target. A global
+   * breaker would tie unrelated failures together; per-call-site
+   * breakers would re-count the same outage as multiple separate
+   * incidents.
+   *
+   * Open-state requests fail immediately with
+   * `HttpClientError("circuit_open")` — no retries, no sleep, the
+   * caller falls back fast.
+   */
+  breaker?: CircuitBreaker;
 }
 
 export interface RequestOptions {
@@ -54,6 +73,7 @@ export function createHttpClient(opts: HttpClientOptions): HttpClient {
   const defaultHeaders = opts.defaultHeaders ?? {};
   const fetchImpl = opts.fetchImpl ?? fetch;
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((res) => setTimeout(res, ms)));
+  const breaker = opts.breaker;
 
   function computeBackoff(attempt: number): number {
     const base = Math.min(backoff * 2 ** attempt, maxBackoff);
@@ -99,59 +119,75 @@ export function createHttpClient(opts: HttpClientOptions): HttpClient {
     }
   }
 
-  return {
-    async request(method, path, requestOpts = {}) {
-      const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
-      const requestTimeoutMs = requestOpts.timeoutMs ?? timeoutMs;
-      let lastError: HttpClientError | undefined;
+  async function requestWithRetries(
+    method: string,
+    path: string,
+    requestOpts: RequestOptions,
+  ): Promise<Response> {
+    const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+    const requestTimeoutMs = requestOpts.timeoutMs ?? timeoutMs;
+    let lastError: HttpClientError | undefined;
 
-      for (let i = 0; i <= retries; i++) {
-        try {
-          const res = await attempt(
-            method,
-            url,
-            requestOpts.body,
-            requestOpts.headers ?? {},
-            requestTimeoutMs,
-            requestOpts.signal,
-          );
+    for (let i = 0; i <= retries; i++) {
+      try {
+        const res = await attempt(
+          method,
+          url,
+          requestOpts.body,
+          requestOpts.headers ?? {},
+          requestTimeoutMs,
+          requestOpts.signal,
+        );
 
-          if (res.ok) return res;
+        if (res.ok) return res;
 
-          if (!isRetryableStatus(res.status)) {
-            throw new HttpClientError(
-              `http_${res.status}` as `http_${number}`,
-              `unexpected status ${res.status}`,
-              { status: res.status, attempts: i + 1 },
-            );
-          }
-
-          lastError = new HttpClientError(
+        if (!isRetryableStatus(res.status)) {
+          throw new HttpClientError(
             `http_${res.status}` as `http_${number}`,
-            `retryable status ${res.status}`,
+            `unexpected status ${res.status}`,
             { status: res.status, attempts: i + 1 },
           );
-        } catch (err) {
-          if (err instanceof HttpClientError && err.code.startsWith("http_")) {
-            // already classified; non-retryable
-            if (err.status !== undefined && !isRetryableStatus(err.status)) {
-              throw err;
-            }
-            lastError = err;
-          } else if (err instanceof HttpClientError) {
-            lastError = err;
-          } else {
-            throw err;
-          }
         }
 
-        if (i < retries) await sleep(computeBackoff(i));
+        lastError = new HttpClientError(
+          `http_${res.status}` as `http_${number}`,
+          `retryable status ${res.status}`,
+          { status: res.status, attempts: i + 1 },
+        );
+      } catch (err) {
+        if (err instanceof HttpClientError && err.code.startsWith("http_")) {
+          // already classified; non-retryable
+          if (err.status !== undefined && !isRetryableStatus(err.status)) {
+            throw err;
+          }
+          lastError = err;
+        } else if (err instanceof HttpClientError) {
+          lastError = err;
+        } else {
+          throw err;
+        }
       }
 
-      throw new HttpClientError("exhausted", `retries exhausted after ${retries + 1} attempts`, {
-        attempts: retries + 1,
-        ...(lastError?.status !== undefined ? { status: lastError.status } : {}),
-      });
+      if (i < retries) await sleep(computeBackoff(i));
+    }
+
+    throw new HttpClientError("exhausted", `retries exhausted after ${retries + 1} attempts`, {
+      attempts: retries + 1,
+      ...(lastError?.status !== undefined ? { status: lastError.status } : {}),
+    });
+  }
+
+  return {
+    async request(method, path, requestOpts = {}) {
+      // Wrap the FULL retry loop in the breaker (not each attempt).
+      // The breaker counts a logical "failing request" as one, not
+      // four — `failureThreshold: 5` then means "5 consecutive
+      // requests that exhausted their retries", which is the
+      // operationally useful signal.
+      if (breaker) {
+        return breaker.execute(() => requestWithRetries(method, path, requestOpts));
+      }
+      return requestWithRetries(method, path, requestOpts);
     },
   };
 }

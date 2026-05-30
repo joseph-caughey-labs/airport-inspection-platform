@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { HttpClientError, createHttpClient } from "../../../packages/http-client/src/index.js";
+import {
+  CircuitBreaker,
+  HttpClientError,
+  createHttpClient,
+} from "../../../packages/http-client/src/index.js";
 
 function jsonResponse(status: number, body: unknown = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -124,5 +128,99 @@ describe("createHttpClient — timeout", () => {
     );
     const client = makeClient({ fetchImpl, retries: 0, timeoutMs: 10 });
     await expect(client.request("GET", "/x")).rejects.toBeInstanceOf(HttpClientError);
+  });
+});
+
+describe("createHttpClient — circuit breaker integration (T-503)", () => {
+  function clientWithBreaker(
+    fetchImpl: typeof fetch,
+    breakerOpts: { failureThreshold?: number; resetTimeoutMs?: number; now?: () => number } = {},
+  ) {
+    const breaker = new CircuitBreaker({
+      name: "test",
+      failureThreshold: breakerOpts.failureThreshold ?? 3,
+      resetTimeoutMs: breakerOpts.resetTimeoutMs ?? 1_000,
+      ...(breakerOpts.now ? { now: breakerOpts.now } : {}),
+    });
+    const client = makeClient({ fetchImpl, retries: 0, breaker });
+    return { client, breaker };
+  }
+
+  it("counts a request as ONE breaker failure when retries are exhausted", async () => {
+    // retries=2, threshold=3 → 3 logical failing requests = 6 fetch
+    // calls. If the breaker counted per-attempt instead, it would
+    // open after the FIRST request's 3rd attempt.
+    const fetchImpl = vi.fn(async () => jsonResponse(503));
+    const breaker = new CircuitBreaker({ name: "t", failureThreshold: 3 });
+    const client = makeClient({ fetchImpl, retries: 2, breaker });
+
+    // First request — 3 fetch calls (1 + 2 retries), exhausts.
+    await expect(client.request("GET", "/x")).rejects.toBeInstanceOf(HttpClientError);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(breaker.getState()).toBe("closed"); // 1 failure logged, threshold 3
+  });
+
+  it("opens after `failureThreshold` exhausted requests", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(503));
+    const { client, breaker } = clientWithBreaker(fetchImpl, { failureThreshold: 2 });
+
+    await expect(client.request("GET", "/x")).rejects.toBeInstanceOf(HttpClientError);
+    await expect(client.request("GET", "/x")).rejects.toBeInstanceOf(HttpClientError);
+    expect(breaker.getState()).toBe("open");
+  });
+
+  it("rejects immediately with circuit_open when the breaker is open", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(503));
+    const { client, breaker } = clientWithBreaker(fetchImpl, { failureThreshold: 1 });
+
+    await expect(client.request("GET", "/x")).rejects.toBeInstanceOf(HttpClientError);
+    expect(breaker.getState()).toBe("open");
+    fetchImpl.mockClear();
+
+    // Second request hits the open breaker — fetch is never called.
+    const err = await client.request("GET", "/x").catch((e) => e as HttpClientError);
+    expect(err).toBeInstanceOf(HttpClientError);
+    expect(err.code).toBe("circuit_open");
+    expect(fetchImpl).toHaveBeenCalledTimes(0);
+  });
+
+  it("transitions to half_open after resetTimeoutMs and closes on a success", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(503));
+    let now = 1000;
+    const { client, breaker } = clientWithBreaker(fetchImpl, {
+      failureThreshold: 1,
+      resetTimeoutMs: 500,
+      now: () => now,
+    });
+    await expect(client.request("GET", "/x")).rejects.toBeInstanceOf(HttpClientError);
+    expect(breaker.getState()).toBe("open");
+
+    // Advance the clock past resetTimeoutMs.
+    now += 600;
+    expect(breaker.getState()).toBe("half_open");
+
+    // Probe succeeds → breaker closes.
+    fetchImpl.mockImplementationOnce(async () => jsonResponse(200, { ok: true }));
+    const res = await client.request("GET", "/x");
+    expect(res.status).toBe(200);
+    expect(breaker.getState()).toBe("closed");
+  });
+
+  it("a successful request resets the failure counter", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(503));
+    const { client, breaker } = clientWithBreaker(fetchImpl, { failureThreshold: 3 });
+
+    await expect(client.request("GET", "/x")).rejects.toBeInstanceOf(HttpClientError);
+    await expect(client.request("GET", "/x")).rejects.toBeInstanceOf(HttpClientError);
+    expect(breaker.getState()).toBe("closed"); // 2 failures, threshold 3
+
+    fetchImpl.mockImplementationOnce(async () => jsonResponse(200));
+    await client.request("GET", "/x");
+
+    // Counter is reset; even after 2 more failures we should still be closed.
+    fetchImpl.mockImplementation(async () => jsonResponse(503));
+    await expect(client.request("GET", "/x")).rejects.toBeInstanceOf(HttpClientError);
+    await expect(client.request("GET", "/x")).rejects.toBeInstanceOf(HttpClientError);
+    expect(breaker.getState()).toBe("closed");
   });
 });
