@@ -1,5 +1,6 @@
 import { onBeforeUnmount, onMounted, ref, shallowRef } from "vue";
 import { useAlertsStore } from "~/stores/alerts";
+import { useAuthStore } from "~/stores/auth";
 import { usePresenceStore } from "~/stores/presence";
 import { useSystemStore } from "~/stores/system";
 import { alertFromDetection, alertFromSensorFrame } from "~/utils/ws-decoder";
@@ -14,6 +15,11 @@ export interface UseAirportLiveStreamOptions {
   onDetection?: (detection: AiDetectionMessage) => void;
   /** Override the URL builder (tests). */
   buildUrl?: (airportId: string) => string;
+  /**
+   * Override the token source (tests). Production reads the
+   * current access token from the auth store on each (re)connect.
+   */
+  token?: () => string | undefined | null;
 }
 
 /**
@@ -33,9 +39,14 @@ export function useAirportLiveStream(opts: UseAirportLiveStreamOptions) {
   const system = useSystemStore();
   const alerts = useAlertsStore();
   const presence = usePresenceStore();
+  const auth = useAuthStore();
 
   const client = shallowRef<WsClient | null>(null);
   const state = ref<WsConnectionState>("disconnected");
+
+  // Closure over the auth store so each (re)connect reads the
+  // freshest token — a refresh between socket attempts is observed.
+  const token = opts.token ?? ((): string | null => auth.accessToken);
 
   const buildUrl =
     opts.buildUrl ??
@@ -61,6 +72,7 @@ export function useAirportLiveStream(opts: UseAirportLiveStreamOptions) {
     client.value = new WsClient({
       url: buildUrl(opts.airportId),
       lastEventId,
+      token,
       onState(s) {
         state.value = s;
         // Map WS state into the global system store so the nav pill reflects reality.

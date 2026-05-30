@@ -25,10 +25,18 @@ export default defineConfig({
     alias: {
       "~": here,
       zod: resolve(here, "node_modules/zod"),
+      // T-504d: the auth store + middleware tests need Pinia/Vue.
+      // Both live under apps/web/node_modules (not the workspace
+      // root), so alias them the same way `zod` is.
+      pinia: resolve(here, "node_modules/pinia"),
+      vue: resolve(here, "node_modules/vue"),
     },
   },
   test: {
     include: [resolve(here, "../../__TEST__/frontend/**/*.test.ts")],
+    // happy-dom gives the auth store tests a working
+    // `window.localStorage` without spinning up jsdom.
+    environment: "happy-dom",
     passWithNoTests: true,
   },
 });

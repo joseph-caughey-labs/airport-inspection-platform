@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { seedAuth } from "../fixtures/auth-fixture";
 import { aiDetection, installWsFixture, presenceSnapshot } from "../fixtures/ws-fixture";
 
 const AIRPORT_ID = "11111111-1111-1111-1111-aaaaaaaaaaaa";
@@ -25,6 +26,10 @@ const SENSOR_ID = "CAM-RWY10L-01";
  * eyes.
  */
 test.describe("scenario 06 — weather-degraded visibility", () => {
+  test.beforeEach(async ({ page }) => {
+    await seedAuth(page);
+  });
+
   test("clear-weather detection has no low-confidence indicator", async ({ page }) => {
     const fixture = await installWsFixture(page);
     await page.goto(`/airports/${AIRPORT_ID}`);
