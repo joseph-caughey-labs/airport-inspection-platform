@@ -1,3 +1,4 @@
+import { verifyJwtHook, type JwtSigner } from "@aip/auth-jwt";
 import { correlationHook, type Logger } from "@aip/logger";
 import { installMetrics, type Registry } from "@aip/metrics";
 import { checkHealth, type PgPool } from "@aip/postgres-client";
@@ -9,6 +10,14 @@ import { registerIncidentRoutes } from "./routes/incidents.js";
 export interface BuildAppOptions {
   logger: Logger;
   pool: PgPool;
+  /**
+   * JWT signer used to verify the Authorization header on every
+   * protected route (T-504c). Required — there is no auth-disabled
+   * mode. /health, /ready, /metrics remain public; each incident
+   * route applies its own per-permission `requireRole` in
+   * `registerIncidentRoutes`.
+   */
+  signer: JwtSigner;
   /** Prom registry. When omitted, /metrics is not exposed. */
   registry?: Registry;
   /**
@@ -29,12 +38,20 @@ export interface BuildAppOptions {
   events?: IncidentEventPublisher;
 }
 
-export async function buildApp({ logger, pool, repository, events, registry }: BuildAppOptions) {
+export async function buildApp({
+  logger,
+  pool,
+  signer,
+  repository,
+  events,
+  registry,
+}: BuildAppOptions) {
   const app = Fastify({
     logger: { level: logger.level },
     disableRequestLogging: false,
   });
   app.addHook("onRequest", correlationHook());
+  app.addHook("onRequest", verifyJwtHook({ signer }));
   if (registry) installMetrics({ app, registry });
   const repo = repository ?? new InMemoryIncidentRepository();
 

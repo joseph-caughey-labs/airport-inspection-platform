@@ -15,6 +15,7 @@
     "start": "tsx src/main.ts"
   },
   "dependencies": {
+    "@aip/auth-jwt": "workspace:*",
     "@aip/logger": "workspace:*",
     "@aip/metrics": "workspace:*",
     "@aip/shared-contracts": "workspace:*",

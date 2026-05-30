@@ -1,3 +1,4 @@
+import { requireRole } from "@aip/auth-jwt";
 import {
   AcknowledgeIncidentRequest,
   ArchiveIncidentRequest,
@@ -9,7 +10,9 @@ import {
   PaginationQuery,
   RejectIncidentRequest,
   ResolveIncidentRequest,
+  rolesFor,
   StartProgressIncidentRequest,
+  type Permission,
 } from "@aip/shared-contracts";
 import type { FastifyInstance } from "fastify";
 import {
@@ -63,7 +66,14 @@ export function registerIncidentRoutes(app: FastifyInstance, opts: IncidentRoute
   const repo = opts.repository;
   const events = opts.events;
 
-  app.get("/incidents", async (req, reply) => {
+  // Tiny helper — a per-route `preHandler` that gates on the policy
+  // matrix. Routes keep the permission name they're guarding right
+  // next to the URL pattern (grep-friendly).
+  const guard = (permission: Permission) => ({
+    preHandler: requireRole(...rolesFor(permission)),
+  });
+
+  app.get("/incidents", guard("incident.read"), async (req, reply) => {
     const queryParse = ListIncidentsQuery.safeParse(req.query);
     if (!queryParse.success) {
       return reply.code(400).send(toErrorEnvelope("VALIDATION", queryParse.error.message));
@@ -76,20 +86,24 @@ export function registerIncidentRoutes(app: FastifyInstance, opts: IncidentRoute
     return result;
   });
 
-  app.get<{ Params: { id: string } }>("/incidents/:id", async (req, reply) => {
-    if (!UUID_RE.test(req.params.id)) {
-      return reply.code(400).send(toErrorEnvelope("INVALID_ID", "id must be a uuid"));
-    }
-    const item = await repo.findById(req.params.id);
-    if (!item) {
-      return reply
-        .code(404)
-        .send(toErrorEnvelope("INCIDENT_NOT_FOUND", `incident ${req.params.id} not found`));
-    }
-    return item;
-  });
+  app.get<{ Params: { id: string } }>(
+    "/incidents/:id",
+    guard("incident.read"),
+    async (req, reply) => {
+      if (!UUID_RE.test(req.params.id)) {
+        return reply.code(400).send(toErrorEnvelope("INVALID_ID", "id must be a uuid"));
+      }
+      const item = await repo.findById(req.params.id);
+      if (!item) {
+        return reply
+          .code(404)
+          .send(toErrorEnvelope("INCIDENT_NOT_FOUND", `incident ${req.params.id} not found`));
+      }
+      return item;
+    },
+  );
 
-  app.post("/incidents", async (req, reply) => {
+  app.post("/incidents", guard("incident.create"), async (req, reply) => {
     const parse = CreateIncidentRequest.safeParse(req.body);
     if (!parse.success) {
       return reply.code(400).send(toErrorEnvelope("VALIDATION", parse.error.message));
@@ -126,6 +140,7 @@ export function registerIncidentRoutes(app: FastifyInstance, opts: IncidentRoute
   registerTransitionRoute<typeof AcknowledgeIncidentRequest._type>(app, {
     command: "acknowledge",
     path: "/incidents/:id/acknowledge",
+    permission: "incident.acknowledge",
     schema: AcknowledgeIncidentRequest,
     reasonOf: (b) => b.note,
     denormalize: (_body, t) => ({
@@ -139,6 +154,7 @@ export function registerIncidentRoutes(app: FastifyInstance, opts: IncidentRoute
   registerTransitionRoute<typeof AssignIncidentRequest._type>(app, {
     command: "assign",
     path: "/incidents/:id/assign",
+    permission: "incident.assign",
     schema: AssignIncidentRequest,
     reasonOf: (b) => b.note,
     denormalize: (body) => ({ assigned_to: body.assignee_id }),
@@ -149,6 +165,7 @@ export function registerIncidentRoutes(app: FastifyInstance, opts: IncidentRoute
   registerTransitionRoute<typeof StartProgressIncidentRequest._type>(app, {
     command: "start_progress",
     path: "/incidents/:id/start_progress",
+    permission: "incident.start_progress",
     schema: StartProgressIncidentRequest,
     reasonOf: (b) => b.note,
     denormalize: () => ({}),
@@ -159,6 +176,7 @@ export function registerIncidentRoutes(app: FastifyInstance, opts: IncidentRoute
   registerTransitionRoute<typeof ResolveIncidentRequest._type>(app, {
     command: "resolve",
     path: "/incidents/:id/resolve",
+    permission: "incident.resolve",
     schema: ResolveIncidentRequest,
     reasonOf: (b) => b.resolution_summary,
     denormalize: (_body, t) => ({ resolved_at: t.occurred_at }),
@@ -169,6 +187,7 @@ export function registerIncidentRoutes(app: FastifyInstance, opts: IncidentRoute
   registerTransitionRoute<typeof EscalateIncidentRequest._type>(app, {
     command: "escalate",
     path: "/incidents/:id/escalate",
+    permission: "incident.escalate",
     schema: EscalateIncidentRequest,
     reasonOf: (b) => b.reason,
     denormalize: () => ({}),
@@ -179,6 +198,7 @@ export function registerIncidentRoutes(app: FastifyInstance, opts: IncidentRoute
   registerTransitionRoute<typeof ArchiveIncidentRequest._type>(app, {
     command: "archive",
     path: "/incidents/:id/archive",
+    permission: "incident.archive",
     schema: ArchiveIncidentRequest,
     reasonOf: (b) => b.note,
     denormalize: () => ({}),
@@ -189,6 +209,7 @@ export function registerIncidentRoutes(app: FastifyInstance, opts: IncidentRoute
   registerTransitionRoute<typeof RejectIncidentRequest._type>(app, {
     command: "reject",
     path: "/incidents/:id/reject",
+    permission: "incident.reject",
     schema: RejectIncidentRequest,
     reasonOf: (b) => b.reason,
     denormalize: () => ({}),
@@ -200,6 +221,8 @@ export function registerIncidentRoutes(app: FastifyInstance, opts: IncidentRoute
 interface TransitionRouteConfig<Body extends { operator_id: string }> {
   command: IncidentCommand;
   path: string;
+  /** RBAC permission the transition is gated on (T-504c). */
+  permission: Permission;
   schema: BodyParser<Body>;
   /** Extracts the human-facing reason from the body. Threaded through
    * to the transition record + the published event. */
@@ -225,67 +248,71 @@ function registerTransitionRoute<Body extends { operator_id: string }>(
   app: FastifyInstance,
   cfg: TransitionRouteConfig<Body>,
 ): void {
-  app.post<{ Params: { id: string } }>(cfg.path, async (req, reply) => {
-    if (!UUID_RE.test(req.params.id)) {
-      return reply.code(400).send(toErrorEnvelope("INVALID_ID", "id must be a uuid"));
-    }
-    const parse = cfg.schema.safeParse(req.body);
-    if (!parse.success) {
-      return reply.code(400).send(toErrorEnvelope("VALIDATION", parse.error.message));
-    }
-    const body = parse.data;
-    const found = await cfg.repository.findById(req.params.id);
-    if (!found) {
-      return reply
-        .code(404)
-        .send(toErrorEnvelope("INCIDENT_NOT_FOUND", `incident ${req.params.id} not found`));
-    }
-    const reason = cfg.reasonOf(body);
-    let dispatched;
-    try {
-      // Fresh Incident with empty history: the route layer doesn't
-      // hydrate history yet (audit-service in T-412 owns the chain).
-      // The state machine only reads `status`.
-      dispatched = new Incident({ ...found, history: [] }).dispatch({
-        command: cfg.command,
-        actor: body.operator_id,
-        ...(reason !== undefined ? { reason } : {}),
-      });
-    } catch (err) {
-      if (err instanceof IllegalTransitionError) {
-        return reply.code(409).send(
-          toErrorEnvelope("ILLEGAL_TRANSITION", err.message, {
-            from: err.from,
-            command: err.command,
-          }),
-        );
+  app.post<{ Params: { id: string } }>(
+    cfg.path,
+    { preHandler: requireRole(...rolesFor(cfg.permission)) },
+    async (req, reply) => {
+      if (!UUID_RE.test(req.params.id)) {
+        return reply.code(400).send(toErrorEnvelope("INVALID_ID", "id must be a uuid"));
       }
-      if (err instanceof TerminalStateError) {
-        return reply.code(410).send(
-          toErrorEnvelope("TERMINAL_STATE", err.message, {
-            state: err.state,
-            command: err.command,
-          }),
-        );
+      const parse = cfg.schema.safeParse(req.body);
+      if (!parse.success) {
+        return reply.code(400).send(toErrorEnvelope("VALIDATION", parse.error.message));
       }
-      throw err;
-    }
-    const persisted = await cfg.repository.save({
-      ...found,
-      status: dispatched.next.status,
-      updated_at: dispatched.transition.occurred_at,
-      ...cfg.denormalize(body, dispatched.transition),
-    });
-    if (cfg.events) {
+      const body = parse.data;
+      const found = await cfg.repository.findById(req.params.id);
+      if (!found) {
+        return reply
+          .code(404)
+          .send(toErrorEnvelope("INCIDENT_NOT_FOUND", `incident ${req.params.id} not found`));
+      }
+      const reason = cfg.reasonOf(body);
+      let dispatched;
       try {
-        await cfg.events.emit(dispatched.event);
-      } catch {
-        // Logged + counted inside the publisher; not fatal to the
-        // operator's request.
+        // Fresh Incident with empty history: the route layer doesn't
+        // hydrate history yet (audit-service in T-412 owns the chain).
+        // The state machine only reads `status`.
+        dispatched = new Incident({ ...found, history: [] }).dispatch({
+          command: cfg.command,
+          actor: body.operator_id,
+          ...(reason !== undefined ? { reason } : {}),
+        });
+      } catch (err) {
+        if (err instanceof IllegalTransitionError) {
+          return reply.code(409).send(
+            toErrorEnvelope("ILLEGAL_TRANSITION", err.message, {
+              from: err.from,
+              command: err.command,
+            }),
+          );
+        }
+        if (err instanceof TerminalStateError) {
+          return reply.code(410).send(
+            toErrorEnvelope("TERMINAL_STATE", err.message, {
+              state: err.state,
+              command: err.command,
+            }),
+          );
+        }
+        throw err;
       }
-    }
-    return persisted;
-  });
+      const persisted = await cfg.repository.save({
+        ...found,
+        status: dispatched.next.status,
+        updated_at: dispatched.transition.occurred_at,
+        ...cfg.denormalize(body, dispatched.transition),
+      });
+      if (cfg.events) {
+        try {
+          await cfg.events.emit(dispatched.event);
+        } catch {
+          // Logged + counted inside the publisher; not fatal to the
+          // operator's request.
+        }
+      }
+      return persisted;
+    },
+  );
 }
 
 function toErrorEnvelope(code: string, message: string, details?: Record<string, unknown>) {

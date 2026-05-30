@@ -1,3 +1,4 @@
+import { createJwtSigner } from "@aip/auth-jwt";
 import { createLogger } from "@aip/logger";
 import { createRegistry } from "@aip/metrics";
 import { createPgPool } from "@aip/postgres-client";
@@ -13,8 +14,12 @@ async function main(): Promise<void> {
     password: process.env["POSTGRES_PASSWORD"] ?? "",
     database: process.env["POSTGRES_DB"] ?? "airport_inspection",
   });
+  const signer = createJwtSigner({
+    secret: process.env["JWT_SECRET"] ?? "dev-only-secret-shared-with-api-gateway-32-bytes-min",
+    issuer: "aip-api-gateway",
+  });
 
-  const app = await buildApp({ logger, pool, registry });
+  const app = await buildApp({ logger, pool, registry, signer });
   const port = Number(process.env["PORT"] ?? 3002);
   await app.listen({ port, host: "0.0.0.0" });
   logger.info({ port }, "reference-data ready");
