@@ -21,7 +21,7 @@
  * production path swaps the seed map for a real Postgres-backed
  * directory without touching this file.
  */
-import { Role } from "@aip/shared-contracts";
+import { Role, type Role as RoleType } from "@aip/shared-contracts";
 import type { JwtSigner } from "@aip/auth-jwt";
 import { AuthJwtError } from "@aip/auth-jwt";
 import type { FastifyInstance } from "fastify";
@@ -31,7 +31,7 @@ export interface DirectoryUser {
   id: string;
   email: string;
   name: string;
-  role: import("@aip/shared-contracts").Role;
+  role: RoleType;
 }
 
 export interface UserDirectory {
