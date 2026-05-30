@@ -1,0 +1,496 @@
+openapi: 3.1.0
+info:
+  title: Airport Inspection Platform — Operator REST API
+  version: 0.4.0
+  description: |
+    REST surface that the operator dashboard, validation engine, and
+    downstream automation consume. Every response uses canonical
+    envelopes from `@aip/shared-contracts`; errors use the shared
+    `ErrorResponse` envelope.
+
+    This file is hand-authored alongside the route registrations
+    (`services/incident-service/src/routes/incidents.ts` etc.) and
+    is the source of truth for client codegen. CI verifies the
+    incident section matches the live response shape via the route
+    tests in `__TEST__/api/rest/incidents/`.
+
+servers:
+  - url: http://localhost:3001
+    description: api-gateway (local docker)
+  - url: http://localhost:3006
+    description: incident-service (direct, no auth)
+
+tags:
+  - name: incidents
+    description: |
+      Incident lifecycle CRUD + the seven transition commands
+      (acknowledge / assign / start_progress / resolve / escalate /
+      archive / reject). Every transition emits an
+      `incident.transitioned` event on
+      `incident.transition.<next_state>` for the audit + notification
+      services.
+
+paths:
+  /incidents:
+    get:
+      tags: [incidents]
+      summary: List incidents
+      description: |
+        Paginated, filterable list. Sorted by `created_at` DESC with
+        `id` as the tiebreaker. The `next_cursor` field is null on
+        the final page; pass it back as `cursor` to fetch the next.
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: "#/components/schemas/IncidentStatus"
+        - in: query
+          name: severity
+          schema:
+            $ref: "#/components/schemas/Severity"
+        - in: query
+          name: airport_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: runway_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: created_after
+          description: Inclusive lower bound on `created_at` (ISO-8601).
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: created_before
+          description: Exclusive upper bound on `created_at` (ISO-8601).
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        "200":
+          description: A paginated incident list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentListResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    post:
+      tags: [incidents]
+      summary: Create an incident
+      description: |
+        Typically called by the validation engine on Layer 10 cert
+        (T-411). Operator UI does NOT call this directly — incidents
+        originate from AI detections.
+
+        The `idempotency_key` enables safe retries: a second POST
+        with the same key returns the originally-created incident
+        rather than creating a duplicate.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIncidentRequest"
+      responses:
+        "201":
+          description: Incident created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Incident" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          description: |
+            An incident with this `idempotency_key` already exists.
+            The body's `details.existingId` carries that id.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /incidents/{id}:
+    get:
+      tags: [incidents]
+      summary: Fetch a single incident
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The incident envelope.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Incident" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          description: No incident with that id.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /incidents/{id}/acknowledge:
+    post:
+      tags: [incidents]
+      summary: Acknowledge an incident
+      description: |
+        Transitions an incident from `new` → `acknowledged`. Stamps
+        `acknowledged_by` (operator UUID) and `acknowledged_at` on the
+        envelope. On success the service publishes an
+        `incident.transitioned` event on the
+        `incident.transition.acknowledged` Redis channel (consumed by
+        the audit + notification services). A publish failure does
+        NOT roll back the persisted transition — at-least-once is
+        provided by the outbox in a later ticket.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcknowledgeIncidentRequest"
+      responses:
+        "200":
+          description: The updated incident envelope.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Incident" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          description: No incident with that id (`INCIDENT_NOT_FOUND`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: |
+            Illegal transition (`ILLEGAL_TRANSITION`). The incident is
+            not in `new` — `details.from` carries the actual status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "410":
+          description: |
+            Terminal state (`TERMINAL_STATE`). The incident is
+            `archived` or otherwise has no outbound transitions.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /incidents/{id}/assign:
+    post:
+      tags: [incidents]
+      summary: Assign an incident to a responder
+      description: |
+        Transitions `acknowledged` → `assigned`. Denormalizes
+        `assigned_to` (the responder UUID) onto the envelope. Emits on
+        `incident.transition.assigned`.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssignIncidentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/IncidentEnvelope" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/IncidentNotFound" }
+        "409": { $ref: "#/components/responses/IllegalTransition" }
+        "410": { $ref: "#/components/responses/TerminalState" }
+  /incidents/{id}/start_progress:
+    post:
+      tags: [incidents]
+      summary: Mark an assigned incident as in_progress
+      description: |
+        Transitions `assigned` → `in_progress`. Responder calls this
+        when they begin work. Emits on `incident.transition.in_progress`.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StartProgressIncidentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/IncidentEnvelope" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/IncidentNotFound" }
+        "409": { $ref: "#/components/responses/IllegalTransition" }
+        "410": { $ref: "#/components/responses/TerminalState" }
+  /incidents/{id}/resolve:
+    post:
+      tags: [incidents]
+      summary: Resolve an in_progress (or escalated) incident
+      description: |
+        Transitions `in_progress | escalated` → `resolved`. The
+        `resolution_summary` is REQUIRED — operators must record how
+        the incident was closed for the post-incident review.
+        Denormalizes `resolved_at`. Emits on
+        `incident.transition.resolved`.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResolveIncidentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/IncidentEnvelope" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/IncidentNotFound" }
+        "409": { $ref: "#/components/responses/IllegalTransition" }
+        "410": { $ref: "#/components/responses/TerminalState" }
+  /incidents/{id}/escalate:
+    post:
+      tags: [incidents]
+      summary: Escalate an active incident
+      description: |
+        Side-entry from any active state (`new`, `acknowledged`,
+        `assigned`, `in_progress`) → `escalated`. `reason` is REQUIRED
+        — SLA / severity-driven auto-escalations populate it with the
+        trigger label. Emits on `incident.transition.escalated`.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EscalateIncidentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/IncidentEnvelope" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/IncidentNotFound" }
+        "409": { $ref: "#/components/responses/IllegalTransition" }
+        "410": { $ref: "#/components/responses/TerminalState" }
+  /incidents/{id}/archive:
+    post:
+      tags: [incidents]
+      summary: Archive a resolved incident
+      description: |
+        Transitions `resolved` → `archived` (terminal). Removes the
+        incident from the active operator queue while preserving it
+        for audit. Emits on `incident.transition.archived`.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ArchiveIncidentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/IncidentEnvelope" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/IncidentNotFound" }
+        "409": { $ref: "#/components/responses/IllegalTransition" }
+        "410": { $ref: "#/components/responses/TerminalState" }
+  /incidents/{id}/reject:
+    post:
+      tags: [incidents]
+      summary: Reject an incident as a false positive
+      description: |
+        Transitions any non-terminal state → `rejected` (terminal).
+        Validation engine (T-405) is the primary caller — `reason`
+        carries the failing validation layer. Emits on
+        `incident.transition.rejected`.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RejectIncidentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/IncidentEnvelope" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/IncidentNotFound" }
+        "409": { $ref: "#/components/responses/IllegalTransition" }
+        "410": { $ref: "#/components/responses/TerminalState" }
+
+components:
+  responses:
+    ValidationError:
+      description: Validation error — payload or query.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    IncidentEnvelope:
+      description: The updated incident envelope.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Incident" }
+    IncidentNotFound:
+      description: No incident with that id (`INCIDENT_NOT_FOUND`).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    IllegalTransition:
+      description: |
+        Illegal transition (`ILLEGAL_TRANSITION`). `details.from`
+        carries the actual status; `details.command` carries the
+        rejected command.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    TerminalState:
+      description: |
+        Terminal state (`TERMINAL_STATE`). The incident is `archived`
+        or `rejected` and has no outbound transitions.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+  schemas:
+    IncidentStatus:
+      type: string
+      enum: [new, acknowledged, assigned, in_progress, resolved, escalated, archived, rejected]
+    Severity:
+      type: string
+      enum: [critical, high, medium, low, info]
+    Incident:
+      type: object
+      required: [id, airport_id, severity, status, title, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        airport_id: { type: string, format: uuid }
+        runway_id: { type: string, format: uuid, nullable: true }
+        severity: { $ref: "#/components/schemas/Severity" }
+        status: { $ref: "#/components/schemas/IncidentStatus" }
+        title: { type: string, minLength: 1, maxLength: 300 }
+        details:
+          type: object
+          additionalProperties: true
+          nullable: true
+        acknowledged_by: { type: string, format: uuid, nullable: true }
+        acknowledged_at: { type: string, format: date-time, nullable: true }
+        assigned_to: { type: string, format: uuid, nullable: true }
+        resolved_at: { type: string, format: date-time, nullable: true }
+        idempotency_key: { type: string, minLength: 1, maxLength: 200, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CreateIncidentRequest:
+      type: object
+      required: [airport_id, severity, title]
+      properties:
+        airport_id: { type: string, format: uuid }
+        runway_id: { type: string, format: uuid }
+        severity: { $ref: "#/components/schemas/Severity" }
+        title: { type: string, minLength: 1, maxLength: 300 }
+        details:
+          type: object
+          additionalProperties: true
+        idempotency_key: { type: string, minLength: 1, maxLength: 200 }
+    AcknowledgeIncidentRequest:
+      type: object
+      required: [operator_id]
+      properties:
+        operator_id:
+          type: string
+          format: uuid
+          description: UUID of the operator performing the acknowledgment.
+        note:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: |
+            Optional free-text note. Threaded through to the
+            published event's `transition.reason` for audit + ops
+            visibility.
+    AssignIncidentRequest:
+      type: object
+      required: [operator_id, assignee_id]
+      properties:
+        operator_id: { type: string, format: uuid }
+        assignee_id:
+          type: string
+          format: uuid
+          description: Responder being routed the incident.
+        note: { type: string, minLength: 1, maxLength: 500 }
+    StartProgressIncidentRequest:
+      type: object
+      required: [operator_id]
+      properties:
+        operator_id: { type: string, format: uuid }
+        note: { type: string, minLength: 1, maxLength: 500 }
+    ResolveIncidentRequest:
+      type: object
+      required: [operator_id, resolution_summary]
+      properties:
+        operator_id: { type: string, format: uuid }
+        resolution_summary:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: |
+            Required. How the incident was closed — feeds the
+            post-incident review and the operator-visible timeline.
+    EscalateIncidentRequest:
+      type: object
+      required: [operator_id, reason]
+      properties:
+        operator_id: { type: string, format: uuid }
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: |
+            Required. Trigger label for auto-escalations
+            (`sla_breach`, `severity_override`) or operator-typed
+            context for manual escalations.
+    ArchiveIncidentRequest:
+      type: object
+      required: [operator_id]
+      properties:
+        operator_id: { type: string, format: uuid }
+        note: { type: string, minLength: 1, maxLength: 500 }
+    RejectIncidentRequest:
+      type: object
+      required: [operator_id, reason]
+      properties:
+        operator_id: { type: string, format: uuid }
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: |
+            Required. For validation-engine rejections this is the
+            failing layer (`layer3_temporal_smoothing`, etc).
+    IncidentListResponse:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Incident" }
+        next_cursor: { type: string, nullable: true }
+        total: { type: integer, minimum: 0 }
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details:
+              type: object
+              additionalProperties: true
+            correlation_id: { type: string, format: uuid }

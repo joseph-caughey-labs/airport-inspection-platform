@@ -147,7 +147,7 @@ def build_app(
         finally:
             await runtime.stop()
 
-    app = FastAPI(title="ai-inference", version="0.3.0", lifespan=lifespan)
+    app = FastAPI(title="ai-inference", version="0.4.0", lifespan=lifespan)
     app.state.runtime = runtime
     metrics_registry = CollectorRegistry()
 
@@ -160,7 +160,7 @@ def build_app(
                 "Static service identification.",
                 labels=["service", "version"],
             )
-            g.add_metric(["ai-inference", os.environ.get("APP_VERSION", "0.3.0")], 1)
+            g.add_metric(["ai-inference", os.environ.get("APP_VERSION", "0.4.0")], 1)
             return [g]
 
     metrics_registry.register(_ServiceLabel())  # type: ignore[arg-type]

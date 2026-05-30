@@ -6,7 +6,15 @@ const here = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
   test: {
-    include: [resolve(here, "../../__TEST__/services/incident-service/**/*.test.ts")],
+    include: [
+      resolve(here, "../../__TEST__/services/incident-service/**/*.test.ts"),
+      // Domain-layer lifecycle tests (T-401). Kept under the shared
+      // __TEST__/unit/ tree so they're discoverable architecturally.
+      resolve(here, "../../__TEST__/unit/incident-lifecycle/**/*.test.ts"),
+      // REST API tests (T-402). Same idea — sit under __TEST__/api so
+      // the rest of the platform's API surface tests live in one place.
+      resolve(here, "../../__TEST__/api/rest/incidents/**/*.test.ts"),
+    ],
     globals: false,
     coverage: {
       provider: "v8",

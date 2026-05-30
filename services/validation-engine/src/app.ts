@@ -1,24 +1,39 @@
 import { type Logger } from "@aip/logger";
 import { type Registry } from "@aip/metrics";
+import { ValidationSubmissionRequest } from "@aip/shared-contracts";
 import Fastify from "fastify";
-import { z } from "zod";
-import { runValidation } from "./orchestrator/index.js";
+import {
+  createOrchestratorMetrics,
+  type OrchestratorMetrics,
+  runValidation,
+} from "./orchestrator/index.js";
 
 export interface BuildAppOptions {
   logger: Logger;
   registry: Registry;
+  /**
+   * Production default `true`: once real layers ship (T-406+) we stop
+   * at the first failing layer — wasted CPU + cascading false
+   * failures in the audit log otherwise. Tests pass `false` to assert
+   * every layer ran.
+   */
+  shortCircuit?: boolean;
+  /** Test seam — when omitted, metrics are wired off the registry. */
+  metrics?: OrchestratorMetrics;
 }
 
-const ValidateBody = z.object({
-  submission_id: z.string().uuid().optional(),
-  payload: z.unknown(),
-});
-
-export async function buildApp({ logger, registry }: BuildAppOptions) {
+export async function buildApp({
+  logger,
+  registry,
+  shortCircuit = true,
+  metrics,
+}: BuildAppOptions) {
   const app = Fastify({
     logger: { level: logger.level },
     disableRequestLogging: false,
   });
+
+  const orchestratorMetrics = metrics ?? createOrchestratorMetrics(registry);
 
   app.get("/health", async () => ({ status: "ok" }));
   app.get("/ready", async () => ({ status: "ready" }));
@@ -29,7 +44,7 @@ export async function buildApp({ logger, registry }: BuildAppOptions) {
   });
 
   app.post("/validate", async (req, reply) => {
-    const parsed = ValidateBody.safeParse(req.body);
+    const parsed = ValidationSubmissionRequest.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({
         error: {
@@ -39,7 +54,13 @@ export async function buildApp({ logger, registry }: BuildAppOptions) {
         },
       });
     }
-    const opts = parsed.data.submission_id ? { submission_id: parsed.data.submission_id } : {};
+    const opts: Parameters<typeof runValidation>[1] = {
+      shortCircuit,
+      metrics: orchestratorMetrics,
+    };
+    if (parsed.data.submission_id) {
+      opts.submission_id = parsed.data.submission_id;
+    }
     const run = await runValidation(parsed.data.payload, opts);
     return run;
   });
