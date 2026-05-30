@@ -1,4 +1,4 @@
-import { type Logger } from "@aip/logger";
+import { correlationHook, type Logger } from "@aip/logger";
 import { type Registry } from "@aip/metrics";
 import { ValidationSubmissionRequest } from "@aip/shared-contracts";
 import Fastify from "fastify";
@@ -32,6 +32,8 @@ export async function buildApp({
     logger: { level: logger.level },
     disableRequestLogging: false,
   });
+
+  app.addHook("onRequest", correlationHook());
 
   const orchestratorMetrics = metrics ?? createOrchestratorMetrics(registry);
 

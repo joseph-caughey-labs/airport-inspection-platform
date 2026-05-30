@@ -1,4 +1,4 @@
-import { type Logger } from "@aip/logger";
+import { correlationHook, type Logger } from "@aip/logger";
 import { checkHealth, type PgPool } from "@aip/postgres-client";
 import Fastify from "fastify";
 import type { IncidentEventPublisher } from "./events/index.js";
@@ -31,6 +31,7 @@ export async function buildApp({ logger, pool, repository, events }: BuildAppOpt
     logger: { level: logger.level },
     disableRequestLogging: false,
   });
+  app.addHook("onRequest", correlationHook());
   const repo = repository ?? new InMemoryIncidentRepository();
 
   app.get("/health", async () => ({ status: "ok" }));

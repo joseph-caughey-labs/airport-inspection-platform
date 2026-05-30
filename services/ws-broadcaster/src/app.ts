@@ -1,4 +1,4 @@
-import { type Logger } from "@aip/logger";
+import { correlationHook, type Logger } from "@aip/logger";
 import { type PgPool } from "@aip/postgres-client";
 import { checkHealth, type RedisClient } from "@aip/redis-client";
 import websocketPlugin from "@fastify/websocket";
@@ -33,6 +33,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<BuiltApp> {
     disableRequestLogging: false,
   });
 
+  app.addHook("onRequest", correlationHook());
   await app.register(websocketPlugin);
 
   const channelRegistry = new ChannelRegistry({ registry: opts.registry });

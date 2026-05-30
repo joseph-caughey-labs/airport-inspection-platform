@@ -1,9 +1,8 @@
-import { type Logger } from "@aip/logger";
+import { correlationHook, type Logger } from "@aip/logger";
 import { type Registry } from "@aip/metrics";
 import Fastify from "fastify";
 import { authDecode } from "./auth/middleware.js";
 import { errorHandler, notFoundHandler } from "./errors/handler.js";
-import { requestId } from "./middleware/request-id.js";
 import { pingRoute } from "./routes/ping.js";
 
 export interface BuildAppOptions {
@@ -18,7 +17,10 @@ export async function buildApp({ logger, registry }: BuildAppOptions) {
   });
 
   // ── Global hooks (order matters) ─────────────────────────────────
-  app.addHook("onRequest", requestId);
+  // correlationHook runs first so authDecode + every downstream
+  // handler logs already-tagged lines (request_id + correlation_id
+  // merged in via the pino mixin in `@aip/logger`).
+  app.addHook("onRequest", correlationHook());
   app.addHook("onRequest", authDecode);
   app.setErrorHandler(errorHandler);
   app.setNotFoundHandler(notFoundHandler);

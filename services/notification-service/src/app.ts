@@ -1,4 +1,4 @@
-import { type Logger } from "@aip/logger";
+import { correlationHook, type Logger } from "@aip/logger";
 import { checkHealth, type RedisClient } from "@aip/redis-client";
 import Fastify from "fastify";
 import type { ChannelRegistry } from "./channels/registry.js";
@@ -19,6 +19,8 @@ export async function buildApp({ logger, redis, registry, webhook }: BuildAppOpt
     logger: { level: logger.level },
     disableRequestLogging: false,
   });
+
+  app.addHook("onRequest", correlationHook());
 
   app.get("/health", async () => ({ status: "ok" }));
 
