@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@aip/auth-jwt": "workspace:*",
+    "@aip/http-safety": "workspace:*",
     "@aip/logger": "workspace:*",
     "@aip/metrics": "workspace:*",
     "@aip/shared-contracts": "workspace:*",
