@@ -20,6 +20,7 @@ import type { Role } from "../enums/role.js";
 export type Permission =
   // Incident lifecycle
   | "incident.read"
+  | "incident.create"
   | "incident.acknowledge"
   | "incident.assign"
   | "incident.start_progress"
@@ -36,6 +37,8 @@ export type Permission =
   // Notification config
   | "notification.read"
   | "notification.replay_dlq"
+  // Reference data (airports / runways / sensors / SOP thresholds)
+  | "reference.read"
   // User management
   | "user.read"
   | "user.create"
@@ -55,10 +58,12 @@ export const PERMISSION_POLICY: Readonly<Record<Permission, readonly Role[]>> = 
   "audit.verify": ["reviewer"],
   "validation.run": ["operator", "reviewer"],
   "notification.read": ["operator", "reviewer"],
+  "reference.read": ["operator", "reviewer"],
   "user.read": ["operator", "reviewer"],
 
   // Incident write paths: operator can drive the happy path,
   // reviewer can escalate/reject + override decisions.
+  "incident.create": ["operator", "reviewer"],
   "incident.acknowledge": ["operator", "reviewer"],
   "incident.assign": ["operator", "reviewer"],
   "incident.start_progress": ["operator", "reviewer"],

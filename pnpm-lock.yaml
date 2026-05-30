@@ -278,6 +278,9 @@ importers:
 
   services/audit-service:
     dependencies:
+      '@aip/auth-jwt':
+        specifier: workspace:*
+        version: link:../../packages/auth-jwt
       '@aip/logger':
         specifier: workspace:*
         version: link:../../packages/logger
@@ -364,6 +367,9 @@ importers:
 
   services/incident-service:
     dependencies:
+      '@aip/auth-jwt':
+        specifier: workspace:*
+        version: link:../../packages/auth-jwt
       '@aip/db-schema':
         specifier: workspace:*
         version: link:../../packages/db-schema
@@ -413,6 +419,9 @@ importers:
 
   services/notification-service:
     dependencies:
+      '@aip/auth-jwt':
+        specifier: workspace:*
+        version: link:../../packages/auth-jwt
       '@aip/logger':
         specifier: workspace:*
         version: link:../../packages/logger
@@ -447,6 +456,9 @@ importers:
 
   services/reference-data:
     dependencies:
+      '@aip/auth-jwt':
+        specifier: workspace:*
+        version: link:../../packages/auth-jwt
       '@aip/db-schema':
         specifier: workspace:*
         version: link:../../packages/db-schema
@@ -521,6 +533,9 @@ importers:
 
   services/validation-engine:
     dependencies:
+      '@aip/auth-jwt':
+        specifier: workspace:*
+        version: link:../../packages/auth-jwt
       '@aip/logger':
         specifier: workspace:*
         version: link:../../packages/logger

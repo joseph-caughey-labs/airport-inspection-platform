@@ -1,12 +1,13 @@
 import { createLogger } from "@aip/logger";
 import { createRegistry } from "@aip/metrics";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../../../../services/incident-service/src/app.js";
 import {
   RecordingIncidentEventPublisher,
   RedisIncidentEventPublisher,
 } from "../../../../services/incident-service/src/events/index.js";
 import { InMemoryIncidentRepository } from "../../../../services/incident-service/src/repository/index.js";
+import { adminToken, bearer, makeTestSigner } from "../../../helpers/auth.js";
 
 const logger = createLogger({ service: "ack-test", level: "fatal" });
 function reg() {
@@ -22,10 +23,34 @@ function fakePool(): import("pg").Pool {
 const AIRPORT = "11111111-1111-1111-1111-aaaaaaaaaaaa";
 const OPERATOR = "33333333-3333-3333-3333-333333333333";
 
+const signer = makeTestSigner();
+let auth: { authorization: string };
+beforeAll(async () => {
+  auth = bearer(await adminToken(signer));
+});
+
+/**
+ * Wrap inject() to auto-attach the admin bearer token. Same pattern
+ * the sibling routes/transitions test files use — auth-specific
+ * paths are exercised in services/incident-service/app.test.ts.
+ */
+function attachAuth(app: Awaited<ReturnType<typeof buildApp>>): void {
+  const originalInject = app.inject.bind(app);
+  app.inject = ((opts: Parameters<typeof originalInject>[0]) => {
+    if (typeof opts === "string") return originalInject({ url: opts, headers: auth });
+    const merged = {
+      ...opts,
+      headers: { ...((opts as { headers?: Record<string, string> }).headers ?? {}), ...auth },
+    };
+    return originalInject(merged);
+  }) as typeof originalInject;
+}
+
 async function build() {
   const repository = new InMemoryIncidentRepository();
   const events = new RecordingIncidentEventPublisher();
-  const app = await buildApp({ logger, pool: fakePool(), repository, events });
+  const app = await buildApp({ logger, pool: fakePool(), repository, events, signer });
+  attachAuth(app);
   return { app, repository, events };
 }
 
@@ -117,7 +142,9 @@ describe("POST /incidents/:id/acknowledge — event publication", () => {
       pool: fakePool(),
       repository,
       events: exploding,
+      signer,
     });
+    attachAuth(app);
     const incident = await repository.create({
       airport_id: AIRPORT,
       severity: "high",

@@ -16,8 +16,15 @@ import type {
   NotificationChannel,
   NotificationEvent,
 } from "../../../services/notification-service/src/channels/types.js";
+import { bearer, makeTestSigner, operatorToken } from "../../helpers/auth.js";
 
 const logger = createLogger({ service: "notification-service-test", level: "fatal" });
+
+const signer = makeTestSigner();
+let opAuth: { authorization: string };
+beforeAll(async () => {
+  opAuth = bearer(await operatorToken(signer));
+});
 
 function healthyRedis(): import("ioredis").default {
   return { ping: vi.fn(async () => "PONG") } as unknown as import("ioredis").default;
@@ -54,7 +61,7 @@ describe("notification-service — health + ready", () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
   beforeAll(async () => {
     const registry = new ChannelRegistry({ channels: [deliveringChannel("in_app")] });
-    app = await buildApp({ logger, redis: healthyRedis(), registry });
+    app = await buildApp({ logger, redis: healthyRedis(), registry, signer });
   });
   afterAll(async () => {
     await app.close();
@@ -81,8 +88,8 @@ describe("notification-service — /channels", () => {
         deliveringChannel("email"),
       ],
     });
-    const app = await buildApp({ logger, redis: healthyRedis(), registry });
-    const res = await app.inject({ method: "GET", url: "/channels" });
+    const app = await buildApp({ logger, redis: healthyRedis(), registry, signer });
+    const res = await app.inject({ method: "GET", url: "/channels", headers: opAuth });
     const body = res.json() as { channels: { name: string }[] };
     expect(body.channels.map((c) => c.name)).toEqual(["in_app", "webhook", "email"]);
     await app.close();
@@ -94,8 +101,8 @@ describe("notification-service — /deliveries", () => {
     const registry = new ChannelRegistry({ channels: [deliveringChannel("in_app")] });
     await registry.dispatch(event("e-1"));
     await registry.dispatch(event("e-2"));
-    const app = await buildApp({ logger, redis: healthyRedis(), registry });
-    const res = await app.inject({ method: "GET", url: "/deliveries" });
+    const app = await buildApp({ logger, redis: healthyRedis(), registry, signer });
+    const res = await app.inject({ method: "GET", url: "/deliveries", headers: opAuth });
     const body = res.json() as { items: DeliveryResult[] };
     expect(body.items.map((i) => i.event_id)).toEqual(["e-2", "e-1"]);
     await app.close();
@@ -106,8 +113,8 @@ describe("notification-service — /deliveries", () => {
     await registry.dispatch(event("e-1"));
     await registry.dispatch(event("e-2"));
     await registry.dispatch(event("e-3"));
-    const app = await buildApp({ logger, redis: healthyRedis(), registry });
-    const res = await app.inject({ method: "GET", url: "/deliveries?limit=2" });
+    const app = await buildApp({ logger, redis: healthyRedis(), registry, signer });
+    const res = await app.inject({ method: "GET", url: "/deliveries?limit=2", headers: opAuth });
     expect((res.json() as { items: DeliveryResult[] }).items).toHaveLength(2);
     await app.close();
   });
@@ -124,8 +131,8 @@ describe("notification-service — /deliveries/dlq", () => {
     });
     await webhook.deliver(event("e-dlq"));
     const registry = new ChannelRegistry({ channels: [webhook] });
-    const app = await buildApp({ logger, redis: healthyRedis(), registry, webhook });
-    const res = await app.inject({ method: "GET", url: "/deliveries/dlq" });
+    const app = await buildApp({ logger, redis: healthyRedis(), registry, webhook, signer });
+    const res = await app.inject({ method: "GET", url: "/deliveries/dlq", headers: opAuth });
     const body = res.json() as { items: DeliveryResult[] };
     expect(body.items).toHaveLength(1);
     expect(body.items[0]!.event_id).toBe("e-dlq");
@@ -134,8 +141,8 @@ describe("notification-service — /deliveries/dlq", () => {
 
   it("returns an empty list when no webhook is wired", async () => {
     const registry = new ChannelRegistry({ channels: [deliveringChannel("in_app")] });
-    const app = await buildApp({ logger, redis: healthyRedis(), registry });
-    const res = await app.inject({ method: "GET", url: "/deliveries/dlq" });
+    const app = await buildApp({ logger, redis: healthyRedis(), registry, signer });
+    const res = await app.inject({ method: "GET", url: "/deliveries/dlq", headers: opAuth });
     expect((res.json() as { items: unknown[] }).items).toEqual([]);
     await app.close();
   });

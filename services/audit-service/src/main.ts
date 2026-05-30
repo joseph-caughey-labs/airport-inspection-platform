@@ -1,3 +1,4 @@
+import { createJwtSigner } from "@aip/auth-jwt";
 import { createLogger } from "@aip/logger";
 import { createRegistry } from "@aip/metrics";
 import { createPgPool } from "@aip/postgres-client";
@@ -35,7 +36,12 @@ async function main(): Promise<void> {
   });
   await subscriber.start();
 
-  const app = await buildApp({ logger, redis: redisHealth, pool, registry });
+  const signer = createJwtSigner({
+    secret: process.env["JWT_SECRET"] ?? "dev-only-secret-shared-with-api-gateway-32-bytes-min",
+    issuer: "aip-api-gateway",
+  });
+
+  const app = await buildApp({ logger, redis: redisHealth, pool, registry, signer });
   const port = Number(process.env["PORT"] ?? 3007);
   await app.listen({ port, host: "0.0.0.0" });
   logger.info({ port }, "audit-service ready");
