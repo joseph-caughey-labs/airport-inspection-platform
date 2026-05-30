@@ -1,45 +1,87 @@
+import {
+  createJwtSigner,
+  requireAuth,
+  requireRole,
+  verifyJwtHook,
+  type JwtSigner,
+} from "@aip/auth-jwt";
 import { correlationHook, type Logger } from "@aip/logger";
 import { installMetrics, type Registry } from "@aip/metrics";
 import Fastify from "fastify";
-import { authDecode } from "./auth/middleware.js";
+import { createInMemoryDirectory } from "./auth/directory.js";
 import { errorHandler, notFoundHandler } from "./errors/handler.js";
+import { registerAuthRoutes, type UserDirectory } from "./routes/auth.js";
 import { pingRoute } from "./routes/ping.js";
 
 export interface BuildAppOptions {
   logger: Logger;
   registry: Registry;
+  /**
+   * JWT signer. Tests can inject one with a fixed clock + short
+   * TTLs; production wires one off the JWT_SECRET env var.
+   */
+  signer?: JwtSigner;
+  /**
+   * User directory. Tests can inject a synthetic one; production
+   * uses the in-memory seeded list (and later a Postgres-backed
+   * one — same interface, no app.ts change).
+   */
+  directory?: UserDirectory;
 }
 
-export async function buildApp({ logger, registry }: BuildAppOptions) {
+const TEST_SECRET = "test-only-secret-do-not-use-in-prod-32-bytes-minimum-thanks";
+
+export async function buildApp({ logger, registry, signer, directory }: BuildAppOptions) {
   const app = Fastify({
     logger: { level: logger.level },
     disableRequestLogging: false,
   });
 
   // ── Global hooks (order matters) ─────────────────────────────────
-  // correlationHook runs first so authDecode + every downstream
-  // handler logs already-tagged lines (request_id + correlation_id
-  // merged in via the pino mixin in `@aip/logger`).
+  // correlationHook runs first so every downstream handler logs
+  // tagged lines.
   app.addHook("onRequest", correlationHook());
-  app.addHook("onRequest", authDecode);
+
+  // verifyJwtHook stamps req.auth from the Bearer token when
+  // present. Routes that need auth call `requireAuth()` /
+  // `requireRole(...)` from `@aip/auth-jwt` as a preHandler.
+  // Routes that DON'T need auth (login, refresh, health, metrics)
+  // see req.auth as undefined and proceed.
+  const jwtSigner =
+    signer ??
+    createJwtSigner({
+      secret: process.env["JWT_SECRET"] ?? TEST_SECRET,
+      issuer: "aip-api-gateway",
+    });
+  const userDirectory = directory ?? createInMemoryDirectory();
+  app.addHook("onRequest", verifyJwtHook({ signer: jwtSigner }));
+
   app.setErrorHandler(errorHandler);
   app.setNotFoundHandler(notFoundHandler);
 
   // ── Metrics (T-502) ──────────────────────────────────────────────
-  // Wires the RED triple onResponse + registers GET /metrics. Health
-  // and scrape paths are excluded from RED so they don't dominate
-  // the counters.
   installMetrics({ app, registry });
 
   // ── Liveness and readiness ───────────────────────────────────────
-  // api-gateway has no downstream DB dependency, so /ready is the same
-  // as /health for now. Once we proxy to dependent services in T-117+
-  // we can extend /ready to probe them.
   app.get("/health", async () => ({ status: "ok" }));
   app.get("/ready", async () => ({ status: "ready" }));
 
+  // ── Auth (T-504) ─────────────────────────────────────────────────
+  registerAuthRoutes(app, { signer: jwtSigner, directory: userDirectory });
+
   // ── API routes ───────────────────────────────────────────────────
   await app.register(pingRoute);
+
+  // Canary RBAC-gated route — proves `requireAuth` and `requireRole`
+  // wire correctly end-to-end. The cross-service rollout (per the
+  // RBAC matrix in @aip/shared-contracts/auth) is its own ticket.
+  app.get("/api/v1/whoami", { preHandler: requireAuth() }, async (req) => ({
+    user_id: req.auth!.user_id,
+    role: req.auth!.role,
+  }));
+  app.get("/api/v1/admin/echo", { preHandler: requireRole("admin") }, async (req) => ({
+    admin: req.auth!.user_id,
+  }));
 
   return app;
 }

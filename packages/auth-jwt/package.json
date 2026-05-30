@@ -1,0 +1,40 @@
+{
+  "name": "@aip/auth-jwt",
+  "version": "0.4.0",
+  "private": true,
+  "description": "JWT issue + verify primitives + RBAC helpers. `jose` under the hood, with a Fastify hook for verifyJwt and a requireRole hook for per-route enforcement.",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "@aip/shared-contracts": "workspace:*",
+    "jose": "^5.9.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "fastify": "^5.0.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2"
+  },
+  "peerDependencies": {
+    "fastify": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "fastify": {
+      "optional": true
+    }
+  }
+}

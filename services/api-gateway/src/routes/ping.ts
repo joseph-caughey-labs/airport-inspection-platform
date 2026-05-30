@@ -12,6 +12,6 @@ export async function pingRoute(app: FastifyInstance): Promise<void> {
     pong: true,
     time: new Date().toISOString(),
     request_id: req.request_id,
-    ...(req.auth ? { auth: { userId: req.auth.userId, role: req.auth.role } } : {}),
+    ...(req.auth ? { auth: { user_id: req.auth.user_id, role: req.auth.role } } : {}),
   }));
 }
