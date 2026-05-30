@@ -2,6 +2,68 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-05-30
+
+**Phase 4 — Incident lifecycle + validation pipeline + audit trail + operator workflow.** Detections from Phase 3 now drive a real incident lifecycle: incident-service owns the state machine and REST surface, the Parity 10-layer validation engine certifies (or routes to HITL) every detection, audit-service persists a hash-chained tamper-evident log of every transition, notification-service fans out to in-app + webhook + email channels, the operator dashboard gains an incident timeline + playback UI sourced from the audit log, and an end-to-end Playwright scenario walks the full FOD-on-runway workflow.
+
+### Added
+
+#### Incident lifecycle (`services/incident-service`)
+
+- **State machine + domain events + lifecycle docs** (#131) — pure `IncidentState` machine with typed errors (`IllegalTransitionError`, `TerminalStateError`), `IncidentTransitionedEvent` envelope, and the `incident.transition.<next_state>` channel taxonomy. ADR-quality lifecycle doc covers every legal command + state.
+- **REST API — CRUD + filters + cursor pagination + OpenAPI** (#132) — `GET /incidents`, `GET /incidents/:id`, `POST /incidents` with `IdempotencyKeyConflictError` handling. Filters by status/severity/airport/runway/created_at window; cursor-based pagination (base64url of `{created_at, id}`); hand-authored OpenAPI 3.1 doc as source of truth for client codegen.
+- **Acknowledgment workflow** (#133) — `POST /incidents/:id/acknowledge` transitions `new → acknowledged`, denormalizes `acknowledged_by` + `acknowledged_at`, and publishes on `incident.transition.acknowledged`. `IncidentEventPublisher` (Redis + Recording variants) + frontend `IncidentApi` + Pinia store with optimistic update + rollback. Publish failure does NOT roll back persistence — a broker flap must never block an operator on an active runway incident.
+- **Assignment + escalation workflow — 6 transition routes** (#134) — `assign`, `start_progress`, `resolve`, `escalate`, `archive`, `reject`. All seven endpoints (incl. acknowledge) share a single `registerTransitionRoute` helper; each route only declares its body schema + `denormalize` callback + `reasonOf` extractor. Required-vs-optional bodies are a domain decision: `resolve` demands `resolution_summary`, `escalate`/`reject` demand `reason`, the rest treat the operator note as optional context.
+
+#### Validation engine — 10 Parity layers (`services/validation-engine`)
+
+- **Foundation — shared contracts + prom metrics + production short-circuit** (#135, **ADR 0008**) — `ValidationLayerId`, `ValidationLayerResult`, `ValidationRun`, `ValidationSubmissionRequest` promoted into `@aip/shared-contracts/validation`; three consumers (engine, bridge, UI) share one schema source. `validation_layers_run_total{layer,passed}`, `validation_runs_total{certified}`, `validation_run_duration_seconds` histogram. `shortCircuit: true` is the production default — stops at the first failing layer instead of running L2..L10 against garbage.
+- **L1 input validation — envelope shape + timestamp window + geo bounds** (#136) — collects every failure in a single pass (operators see all L1 issues at once); configurable clock + skew bounds default to ±5min future / 24h past.
+- **L2 schema & contract validation** (#137) — `EventEnvelope` zod parse, `schema_version` allowlist (default `["v1"]`), event-type-specific payload schemas (`SensorFramePayload` / `AiDetectionPayload`). Wire-format note: validator-side `AiDetectionPayload` mirrors the Python publisher's short class names while the long-name TS enum reconciliation lands later.
+- **L3 business rules — SOP-driven policy** (#138) — FOD min-dimension + location-severity matrix, crack severity bands, snowbank height + setback, wildlife high-risk severity floor. Defaults in `sop-thresholds.ts` mirror `data/seed/reference/sop-baseline.json` — explicit drift > silent drift.
+- **L4 source-of-truth + L5 cross-system — reference-data integration** (#139) — `ReferenceDataClient` interface, `InMemoryReferenceDataClient` for tests, default-pass when no client is configured. L4: `SENSOR_NOT_FOUND` / `AIRPORT_NOT_FOUND`. L5: `SENSOR_AIRPORT_MISMATCH` / `SENSOR_OFFLINE_AT_CAPTURE`; defers to L4 on missing entities (no double-fail).
+- **L6 AI output sanity + L7 risk scoring** (#140) — L6: bbox extent ≤ 1, confidence ≥ floor, evidence linkage non-sentinel + non-duplicate, captured_at within envelope skew. L7: transparent named-factor score (`confidence_gap`, `freshness`, `severity_weight`, `prior_failure_density`) with explicit weights; `routes_to_hitl` signal for L8 + `RISK_EXCEPTION_THRESHOLD` hard-fail at 0.95. Operator-trust property over black-box score.
+- **L8 HITL + L9 audit emission + L10 certification — pipeline complete** (#141) — L8 produces `details.hitl = {routed_to_hitl, priority, reasons[]}`; L9 hands a `ValidationAuditRecord` to an optional `AuditSink`; L10 gates with `HITL_PENDING` / `CERTIFICATION_INELIGIBLE` / pass + `details.certification`. All 10 layers live.
+
+#### Audit + notification
+
+- **Audit-service — hash-chained append-only log** (#142, **ADR 0010 detection layer**) — `entry_hash = sha256(prev_hash || canonical_json(entry))` with transactional INSERT under `pg_advisory_xact_lock` so concurrent writers serialize on the chain tip. `incident.transition.*` Redis subscriber persists every state transition. Operator HTTP surface: `GET /audit/events` (paginated), `GET /audit/events/:event_id`, `GET /audit/lineage/:subject_id`, `POST /audit/verify` (recompute hashes over a range, capped at 1000 rows).
+- **Notification-service — live channels + DLQ** (#143) — three channels with a uniform `NotificationChannel { appliesTo, deliver }` interface: `in_app` (Redis publish to `events.broadcast.<airport_id>`), `webhook` (HTTP POST with exponential backoff retry + in-memory DLQ), `email` (stub: logs + recipient). `IncidentNotificationsSubscriber` dedupes by `event_id` over a sliding LRU. `GET /channels`, `/deliveries`, `/deliveries/dlq` for operator inspection.
+
+#### Operator dashboard (`apps/web`)
+
+- **Incident timeline + playback** (#144) — `AuditApi.lineage(subject_id)` read-only client, pure `buildIncidentTimeline()` helper that prepends an implicit `created` step at the from-state of the first transition + sorts by `occurred_at`. `useIncidentTimeline` composable owns the reactive cursor (`steps`, `currentStep`, `prev/next/jumpToLast`, `setCursor`). `IncidentTimeline.vue` renders numbered steps + slider + "State at cursor" snapshot. Deep-link page at `/incidents/:id`. `data-testid` on every interactive surface for future Playwright drives.
+
+#### Pipeline ops (`services/event-pipeline`)
+
+- **Replay queue worker — recovers late-beyond-window frames** (#145) — drains `ReplayQueue` (T-207) on an interval and re-dispatches each item straight to the persist handler, bypassing the prioritization wrapper on purpose (the watermark has advanced; re-classifying would loop forever). `inFlight` guard collapses overlapping ticks; `stop()` awaits the in-flight tick. Metrics: `replay_drained_total{outcome}`, `replay_dispatch_duration_seconds`.
+
+#### Quality + observability
+
+- **Playwright scenario 07 — FOD on active runway, full operator workflow** (#146) — capstone E2E. Pushes a critical FOD detection through the ws-fixture and verifies the alert feed; mocks audit-service `/audit/lineage` and walks the timeline through `created → acknowledged → assigned → in_progress → resolved` with the slider + prev/next/last controls. The real-stack variant ships in T-507.
+
+### Test counts
+
+- `@aip/incident-service`: **101 tests** (state machine + REST CRUD + 7 transition routes + acknowledge dedicated suite)
+- `@aip/validation-engine`: **144 tests** (10 layers + orchestrator + HTTP)
+- `@aip/audit-service`: **33 tests** (hash chain + writer + subscriber + HTTP routes)
+- `@aip/notification-service`: **28 tests** (3 channels + registry + subscriber + HTTP)
+- `@aip/event-pipeline`: **104 tests** (+8 for the replay queue worker)
+- `@aip/web` (unit): **112 tests** (+18 for the incident timeline + audit client + composable)
+- Playwright e2e: **scenario 07** added (FOD-on-runway full workflow)
+
+### Architecture decisions
+
+- **ADR 0008 — Parity 10-layer validation pipeline** (Accepted). Layer ids, ordering, run envelope live in `@aip/shared-contracts`; orchestrator owns short-circuit + per-layer metrics; named-factor risk score over a black-box ML scorer for operator trust.
+
+### Carried into Phase 5 backlog
+
+- Bounding-box overlay on the live map (data flows through; component lands with the incident detail panel integration).
+- `RestReferenceDataClient` + `RestAuditSink` wiring for the validation engine ↔ reference-data + audit-service paths (interfaces ship; HTTP impl deferred to keep wiring concerns isolated).
+- TS `DetectionClass` enum reconciliation with the Python publisher's wire names.
+- Validation-engine ↔ event-pipeline bridge (POST /validate before incident creation; today the engine is callable but not wired into the live ingestion path).
+- Dockerized full-stack e2e (T-507) covers real audit-service + real reference-data paths.
+
 ## [0.3.0] — 2026-05-29
 
 **Phase 3 — AI inference + detection-aware operator dashboard.** The Python AI service now consumes sensor frames, runs five simulated detector heads, calibrates the output, suppresses false positives across a sliding window, and emits detection events that flow end-to-end to the operator dashboard. The dashboard surfaces them in the alert feed with severity + confidence + a "LOW CONF" indicator when the weather modifier degrades the score.

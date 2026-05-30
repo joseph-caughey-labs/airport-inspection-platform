@@ -1,6 +1,6 @@
 {
   "name": "@aip/db-schema",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "PostgreSQL schema and migration tooling — Drizzle ORM definitions for the platform's core entities, hand-authored initial SQL migration, and a programmatic runMigrations() entrypoint.",
   "license": "SEE LICENSE IN ../../LICENSE",
