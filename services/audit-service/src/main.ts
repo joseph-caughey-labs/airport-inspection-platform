@@ -2,10 +2,18 @@ import { createLogger } from "@aip/logger";
 import { createPgPool } from "@aip/postgres-client";
 import { createRedis } from "@aip/redis-client";
 import { buildApp } from "./app.js";
+import { AuditChainWriter } from "./chain/writer.js";
+import { IncidentTransitionsSubscriber } from "./subscribers/incident-transitions.js";
 
 async function main(): Promise<void> {
   const logger = createLogger({ service: "audit-service" });
-  const redis = createRedis({
+  // Two Redis clients: one for the subscriber loop (cannot share
+  // with command/PUBLISH usage) and one for healthcheck PINGs.
+  const redisSub = createRedis({
+    host: process.env["REDIS_HOST"] ?? "redis",
+    port: Number(process.env["REDIS_PORT"] ?? 6379),
+  });
+  const redisHealth = createRedis({
     host: process.env["REDIS_HOST"] ?? "redis",
     port: Number(process.env["REDIS_PORT"] ?? 6379),
   });
@@ -17,15 +25,25 @@ async function main(): Promise<void> {
     database: process.env["POSTGRES_DB"] ?? "airport_inspection",
   });
 
-  const app = await buildApp({ logger, redis, pool });
+  const writer = new AuditChainWriter(pool);
+  const subscriber = new IncidentTransitionsSubscriber({
+    redis: redisSub,
+    writer,
+    logger,
+  });
+  await subscriber.start();
+
+  const app = await buildApp({ logger, redis: redisHealth, pool });
   const port = Number(process.env["PORT"] ?? 3007);
   await app.listen({ port, host: "0.0.0.0" });
   logger.info({ port }, "audit-service ready");
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.warn({ signal }, "shutting down");
+    await subscriber.stop();
     await app.close();
-    redis.disconnect();
+    redisSub.disconnect();
+    redisHealth.disconnect();
     await pool.end();
     process.exit(0);
   };
