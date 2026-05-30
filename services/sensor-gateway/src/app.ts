@@ -1,3 +1,4 @@
+import { DEFAULT_BODY_LIMIT_BYTES, installHttpSafety } from "@aip/http-safety";
 import { correlationHook, type Logger } from "@aip/logger";
 import { installMetrics, type Registry } from "@aip/metrics";
 import { checkHealth, type RedisClient } from "@aip/redis-client";
@@ -19,8 +20,10 @@ export async function buildApp({ logger, redis, registry }: BuildAppOptions) {
   const app = Fastify({
     logger: { level: logger.level },
     disableRequestLogging: false,
+    bodyLimit: DEFAULT_BODY_LIMIT_BYTES,
   });
 
+  installHttpSafety(app);
   app.addHook("onRequest", correlationHook());
   if (registry) installMetrics({ app, registry });
 

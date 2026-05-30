@@ -1,4 +1,5 @@
 import { requireRole, verifyJwtHook, type JwtSigner } from "@aip/auth-jwt";
+import { DEFAULT_BODY_LIMIT_BYTES, installHttpSafety } from "@aip/http-safety";
 import { correlationHook, type Logger } from "@aip/logger";
 import { installMetrics, type Registry } from "@aip/metrics";
 import { rolesFor, ValidationSubmissionRequest } from "@aip/shared-contracts";
@@ -39,8 +40,10 @@ export async function buildApp({
   const app = Fastify({
     logger: { level: logger.level },
     disableRequestLogging: false,
+    bodyLimit: DEFAULT_BODY_LIMIT_BYTES,
   });
 
+  installHttpSafety(app);
   app.addHook("onRequest", correlationHook());
   app.addHook("onRequest", verifyJwtHook({ signer }));
   installMetrics({ app, registry });

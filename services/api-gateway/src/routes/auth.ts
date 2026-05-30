@@ -42,6 +42,12 @@ export interface UserDirectory {
 export interface RegisterAuthRoutesOptions {
   signer: JwtSigner;
   directory: UserDirectory;
+  /**
+   * Per-route per-minute rate limit override (T-505). When omitted,
+   * the auth routes ride the app-level limiter. Production should
+   * always pass a value to keep brute-force budgets tight.
+   */
+  authMaxPerMinute?: number;
 }
 
 const LoginBody = z.object({
@@ -53,7 +59,15 @@ const RefreshBody = z.object({
 });
 
 export function registerAuthRoutes(app: FastifyInstance, opts: RegisterAuthRoutesOptions): void {
-  app.post("/api/v1/auth/login", async (req, reply) => {
+  // T-505: tighter per-route token bucket on the auth surface. The
+  // global limiter still applies; this `config.rateLimit` overrides
+  // its `max` for these routes only. Shape matches `@fastify/rate-limit`.
+  const authRateLimit =
+    opts.authMaxPerMinute !== undefined
+      ? { rateLimit: { max: opts.authMaxPerMinute, timeWindow: "1 minute" } }
+      : {};
+
+  app.post("/api/v1/auth/login", { config: authRateLimit }, async (req, reply) => {
     const parsed = LoginBody.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send(errorEnvelope("validation_failed", "invalid login body"));
@@ -77,7 +91,7 @@ export function registerAuthRoutes(app: FastifyInstance, opts: RegisterAuthRoute
     });
   });
 
-  app.post("/api/v1/auth/refresh", async (req, reply) => {
+  app.post("/api/v1/auth/refresh", { config: authRateLimit }, async (req, reply) => {
     const parsed = RefreshBody.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send(errorEnvelope("validation_failed", "invalid refresh body"));

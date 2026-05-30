@@ -1,3 +1,4 @@
+import { DEFAULT_BODY_LIMIT_BYTES, installHttpSafety } from "@aip/http-safety";
 import { correlationHook, type Logger } from "@aip/logger";
 import { installMetrics, type Registry } from "@aip/metrics";
 import { checkHealth as checkPostgres, type PgPool } from "@aip/postgres-client";
@@ -22,8 +23,10 @@ export async function buildApp({ logger, redis, pool, registry }: BuildAppOption
   const app = Fastify({
     logger: { level: logger.level },
     disableRequestLogging: false,
+    bodyLimit: DEFAULT_BODY_LIMIT_BYTES,
   });
 
+  installHttpSafety(app);
   app.addHook("onRequest", correlationHook());
   installMetrics({ app, registry });
 
