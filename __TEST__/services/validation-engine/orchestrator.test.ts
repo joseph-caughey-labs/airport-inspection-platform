@@ -19,12 +19,17 @@ import {
  * own input.
  */
 function validInput(): unknown {
+  // Single `now` snapshot — L6's `CAPTURED_AT_AFTER_ENVELOPE`
+  // rejects payloads where captured_at > timestamp, so calling
+  // `new Date().toISOString()` twice (the original mistake)
+  // produced an unphysical payload on slow CI runners.
+  const now = new Date().toISOString();
   return {
     event_id: "11111111-2222-3333-4444-555555555555",
     event_type: "ai.detection.fod.emitted",
     schema_version: "v1",
     source: { service: "test" },
-    timestamp: new Date().toISOString(),
+    timestamp: now,
     payload: {
       detection_id: "det-001",
       sensor_id: "CAM-N-03",
@@ -32,7 +37,7 @@ function validInput(): unknown {
       detection_class: "fod",
       confidence: 0.5,
       severity_hint: "high",
-      captured_at: new Date().toISOString(),
+      captured_at: now,
     },
   };
 }
