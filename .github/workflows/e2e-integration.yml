@@ -1,0 +1,124 @@
+name: E2E Integration
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+concurrency:
+  group: e2e-integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dockerized:
+    name: Playwright — dockerized full-stack (T-507)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      CI: "true"
+      # Shared across all services + the test harness so JWTs verify.
+      JWT_SECRET: "ci-integration-secret-must-be-at-least-32-bytes-long"
+      LOG_LEVEL: "warn"
+      # Make the seeded test users predictable.
+      POSTGRES_USER: airport_ops
+      POSTGRES_PASSWORD: ci-test-password
+      POSTGRES_DB: airport_inspection
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers (chromium only)
+        run: pnpm e2e:install
+
+      # Build images in parallel so the slow part overlaps with
+      # postgres/redis coming up.
+      - name: Build docker images
+        run: docker compose build --parallel
+
+      - name: Start data plane (postgres + redis)
+        run: docker compose up -d postgres redis
+
+      - name: Wait for postgres + redis healthy
+        run: |
+          for i in {1..30}; do
+            pg=$(docker inspect --format='{{.State.Health.Status}}' aip-postgres 2>/dev/null || echo starting)
+            rd=$(docker inspect --format='{{.State.Health.Status}}' aip-redis 2>/dev/null || echo starting)
+            echo "postgres=$pg redis=$rd"
+            if [ "$pg" = "healthy" ] && [ "$rd" = "healthy" ]; then exit 0; fi
+            sleep 2
+          done
+          echo "data plane never became healthy" >&2
+          exit 1
+
+      - name: Migrate + seed
+        run: |
+          pnpm db:migrate
+          pnpm db:seed
+        env:
+          POSTGRES_HOST: 127.0.0.1
+          POSTGRES_PORT: 5432
+
+      - name: Start the rest of the stack
+        run: docker compose up -d
+
+      - name: Wait for nginx healthy (waits transitively on web + api-gateway + ws-broadcaster)
+        run: |
+          for i in {1..60}; do
+            nginx=$(docker inspect --format='{{.State.Health.Status}}' aip-nginx 2>/dev/null || echo starting)
+            echo "nginx=$nginx"
+            if [ "$nginx" = "healthy" ]; then exit 0; fi
+            sleep 3
+          done
+          echo "nginx never became healthy" >&2
+          docker compose ps
+          exit 1
+
+      - name: Run integration e2e
+        run: pnpm e2e:integration
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: |
+          mkdir -p /tmp/compose-logs
+          docker compose logs --no-color > /tmp/compose-logs/all.log
+          docker compose ps > /tmp/compose-logs/ps.txt
+
+      - name: Upload compose logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-logs
+          path: /tmp/compose-logs/**
+          retention-days: 7
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-playwright-traces
+          path: |
+            __TEST__/e2e/test-results/**
+            __TEST__/e2e/playwright-report/**
+          retention-days: 7
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
