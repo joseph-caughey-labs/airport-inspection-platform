@@ -18,4 +18,4 @@ ENV NODE_ENV=production
 EXPOSE 3005
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 --start-period=10s \
   CMD curl -fsS http://localhost:3005/ready || exit 1
-CMD ["node", "--enable-source-maps", "--loader=tsx", "services/ws-broadcaster/src/main.ts"]
+CMD ["services/ws-broadcaster/node_modules/.bin/tsx", "services/ws-broadcaster/src/main.ts"]

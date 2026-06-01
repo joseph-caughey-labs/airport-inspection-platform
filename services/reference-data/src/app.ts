@@ -1,6 +1,10 @@
+import { requireRole, verifyJwtHook, type JwtSigner } from "@aip/auth-jwt";
 import { schema } from "@aip/db-schema";
-import { type Logger } from "@aip/logger";
+import { DEFAULT_BODY_LIMIT_BYTES, installHttpSafety } from "@aip/http-safety";
+import { correlationHook, type Logger } from "@aip/logger";
+import { installMetrics, type Registry } from "@aip/metrics";
 import { checkHealth, type PgPool } from "@aip/postgres-client";
+import { rolesFor } from "@aip/shared-contracts";
 import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import Fastify from "fastify";
@@ -8,6 +12,14 @@ import Fastify from "fastify";
 export interface BuildAppOptions {
   logger: Logger;
   pool: PgPool;
+  /** Prom registry. When omitted, /metrics is not exposed. */
+  registry?: Registry;
+  /**
+   * JWT signer used to verify the Authorization header on every
+   * protected route (T-504c). Required — there is no auth-disabled
+   * mode. /health, /ready, /metrics remain public.
+   */
+  signer: JwtSigner;
 }
 
 /**
@@ -18,12 +30,23 @@ export interface BuildAppOptions {
  * shared `@aip/logger`; Fastify's per-request logs use its default
  * pino instance configured below.
  */
-export async function buildApp({ logger, pool }: BuildAppOptions) {
+export async function buildApp({ logger, pool, registry, signer }: BuildAppOptions) {
   const app = Fastify({
     logger: { level: logger.level },
     disableRequestLogging: false,
+    bodyLimit: DEFAULT_BODY_LIMIT_BYTES,
   });
+
+  installHttpSafety(app);
+  app.addHook("onRequest", correlationHook());
+  app.addHook("onRequest", verifyJwtHook({ signer }));
+  if (registry) installMetrics({ app, registry });
   const db = drizzle(pool, { schema });
+
+  // `reference.read` covers everything in the reference catalog —
+  // airports, runways, sensors, SOP baselines. Operators and
+  // reviewers both need it; admin is implicit.
+  const readGuard = { preHandler: requireRole(...rolesFor("reference.read")) };
 
   app.get("/health", async () => ({ status: "ok" }));
 
@@ -39,12 +62,12 @@ export async function buildApp({ logger, pool }: BuildAppOptions) {
     return { status: "ready", latency_ms: health.latency_ms };
   });
 
-  app.get("/airports", async () => {
+  app.get("/airports", readGuard, async () => {
     const rows = await db.select().from(schema.airports);
     return { items: rows, total: rows.length };
   });
 
-  app.get<{ Querystring: { airport_id?: string } }>("/runways", async (req) => {
+  app.get<{ Querystring: { airport_id?: string } }>("/runways", readGuard, async (req) => {
     const { airport_id } = req.query;
     const rows = airport_id
       ? await db.select().from(schema.runways).where(eq(schema.runways.airportId, airport_id))
@@ -54,7 +77,7 @@ export async function buildApp({ logger, pool }: BuildAppOptions) {
 
   app.get<{
     Querystring: { airport_id?: string; type?: string };
-  }>("/sensors", async (req) => {
+  }>("/sensors", readGuard, async (req) => {
     const { airport_id, type } = req.query;
     const conditions = [
       airport_id ? eq(schema.sensors.airportId, airport_id) : undefined,
@@ -70,7 +93,7 @@ export async function buildApp({ logger, pool }: BuildAppOptions) {
     return { items: rows, total: rows.length };
   });
 
-  app.get("/sop-baseline", async () => {
+  app.get("/sop-baseline", readGuard, async () => {
     // T-118 lands real values seeded from data/seed/reference/sop-baseline.json.
     // Until then, expose a stable placeholder so consumers can wire up.
     return {

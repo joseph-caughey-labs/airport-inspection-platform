@@ -1,4 +1,6 @@
+import { createJwtSigner } from "@aip/auth-jwt";
 import { createLogger } from "@aip/logger";
+import { createRegistry } from "@aip/metrics";
 import { createRedis } from "@aip/redis-client";
 import { buildApp } from "./app.js";
 import { EmailChannel } from "./channels/email.js";
@@ -31,6 +33,11 @@ async function main(): Promise<void> {
   });
   const email = new EmailChannel({ logger });
   const registry = new ChannelRegistry({ channels: [inApp, webhook, email] });
+  const promRegistry = createRegistry({ service: "notification-service" });
+  const signer = createJwtSigner({
+    secret: process.env["JWT_SECRET"] ?? "dev-only-secret-shared-with-api-gateway-32-bytes-min",
+    issuer: "aip-api-gateway",
+  });
 
   const subscriber = new IncidentNotificationsSubscriber({
     redis: redisSub,
@@ -39,7 +46,14 @@ async function main(): Promise<void> {
   });
   await subscriber.start();
 
-  const app = await buildApp({ logger, redis: redisHealth, registry, webhook });
+  const app = await buildApp({
+    logger,
+    redis: redisHealth,
+    registry,
+    signer,
+    webhook,
+    promRegistry,
+  });
   const port = Number(process.env["PORT"] ?? 3008);
   await app.listen({ port, host: "0.0.0.0" });
   logger.info({ port }, "notification-service ready");

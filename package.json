@@ -1,6 +1,6 @@
 {
   "name": "airport-inspection-platform",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Airport Inspection Platform — production-style portfolio demo of an AI-assisted airport inspection system (sensor ingestion, AI inference, 10-layer validation, ops dashboard).",
   "license": "SEE LICENSE IN LICENSE",
@@ -25,6 +25,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,vue,js,mjs,cjs,json,md,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,vue,js,mjs,cjs,json,md,yaml,yml}\"",
     "e2e": "playwright test --config=__TEST__/e2e/playwright.config.ts",
+    "e2e:integration": "playwright test --config=__TEST__/e2e/playwright.integration.config.ts",
     "e2e:install": "playwright install --with-deps chromium",
     "clean": "turbo run clean && rm -rf node_modules .turbo"
   },

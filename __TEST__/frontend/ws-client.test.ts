@@ -9,16 +9,20 @@ import { WsClient } from "~/composables/useWebSocket";
 class FakeSocket {
   static instances: FakeSocket[] = [];
   static lastUrl: string | undefined;
+  static lastProtocols: string | string[] | undefined;
   readonly url: string;
+  readonly protocols: string | string[] | undefined;
   readyState = 0;
   private listeners: Record<string, Array<(e: unknown) => void>> = {};
   static OPEN = 1;
   static CLOSED = 3;
 
-  constructor(url: string) {
+  constructor(url: string, protocols?: string | string[]) {
     this.url = url;
+    this.protocols = protocols;
     FakeSocket.instances.push(this);
     FakeSocket.lastUrl = url;
+    FakeSocket.lastProtocols = protocols;
   }
 
   addEventListener(type: string, fn: (e: unknown) => void): void {
@@ -47,6 +51,7 @@ const FakeWsCtor = FakeSocket as unknown as typeof WebSocket;
 afterEach(() => {
   FakeSocket.instances = [];
   FakeSocket.lastUrl = undefined;
+  FakeSocket.lastProtocols = undefined;
 });
 
 describe("WsClient — lifecycle + dispatch", () => {
@@ -105,6 +110,60 @@ describe("WsClient — lifecycle + dispatch", () => {
     expect(onFrame).toHaveBeenCalledTimes(1);
     const arg = onFrame.mock.calls[0]?.[0];
     expect(arg?.kind).toBe("message");
+    c.dispose();
+  });
+});
+
+describe("WsClient — auth subprotocol (T-504d)", () => {
+  it("opens with `bearer.<token>` as the subprotocol when token returns a string", () => {
+    const c = new WsClient({
+      url: "ws://test/events",
+      onFrame: vi.fn(),
+      onState: vi.fn(),
+      WebSocketCtor: FakeWsCtor,
+      token: () => "access-1",
+    });
+    c.start();
+    expect(FakeSocket.lastProtocols).toEqual(["bearer.access-1"]);
+    c.dispose();
+  });
+
+  it("omits the protocols arg entirely when token returns null", () => {
+    const c = new WsClient({
+      url: "ws://test/events",
+      onFrame: vi.fn(),
+      onState: vi.fn(),
+      WebSocketCtor: FakeWsCtor,
+      token: () => null,
+    });
+    c.start();
+    expect(FakeSocket.lastProtocols).toBeUndefined();
+    c.dispose();
+  });
+
+  it("re-reads the token on reconnect so a refresh between attempts is observed", () => {
+    let token: string | null = "access-1";
+    let scheduled: (() => void) | undefined;
+    const fakeSetTimeout = ((fn: () => void) => {
+      scheduled = fn;
+      return 1 as unknown as ReturnType<typeof setTimeout>;
+    }) as unknown as typeof setTimeout;
+    const c = new WsClient({
+      url: "ws://test/events",
+      onFrame: vi.fn(),
+      onState: vi.fn(),
+      WebSocketCtor: FakeWsCtor,
+      token: () => token,
+      setTimeoutFn: fakeSetTimeout,
+      randomFn: () => 0.5,
+    });
+    c.start();
+    expect(FakeSocket.lastProtocols).toEqual(["bearer.access-1"]);
+    FakeSocket.instances[0]!.emitOpen();
+    FakeSocket.instances[0]!.emitClose();
+    token = "access-2";
+    scheduled?.();
+    expect(FakeSocket.lastProtocols).toEqual(["bearer.access-2"]);
     c.dispose();
   });
 });

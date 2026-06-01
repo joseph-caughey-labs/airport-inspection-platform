@@ -29,4 +29,4 @@ EXPOSE 3001
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 --start-period=10s \
   CMD curl -fsS http://localhost:3001/ready || exit 1
 
-CMD ["node", "--enable-source-maps", "--loader=tsx", "services/api-gateway/src/main.ts"]
+CMD ["services/api-gateway/node_modules/.bin/tsx", "services/api-gateway/src/main.ts"]

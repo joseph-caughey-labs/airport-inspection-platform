@@ -5,8 +5,6 @@ export type ConnectionState = "connecting" | "connected" | "stale" | "disconnect
 export interface SystemState {
   /** Aggregate connection state of the upstream API + WS pipeline. */
   connection: ConnectionState;
-  /** Operator role for the current session. Phase 1 stub — replaced by T-504 auth. */
-  role: "operator" | "reviewer" | "admin" | null;
   /** Current airport context. Multi-airport switcher in T-211. */
   airportIcao: string | null;
   /** App version for the about/diagnostic strip. */
@@ -16,9 +14,8 @@ export interface SystemState {
 export const useSystemStore = defineStore("system", {
   state: (): SystemState => ({
     connection: "connecting",
-    role: "operator", // Phase 1 stub — every dev session is "operator" until T-504.
     airportIcao: null,
-    version: "0.4.0",
+    version: "0.5.0",
   }),
   getters: {
     isConnected: (s): boolean => s.connection === "connected",

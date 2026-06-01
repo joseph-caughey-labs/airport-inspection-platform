@@ -7,6 +7,17 @@ export interface WsClientOptions {
   url: string;
   /** Server-side cursor (event_id) for resume on reconnect. */
   lastEventId?: () => string | undefined;
+  /**
+   * Access token to pass on the WS upgrade (T-504d). Read per
+   * connect so a refresh between attempts picks up the new value.
+   *
+   * Browsers can't set arbitrary headers on a WebSocket upgrade, so
+   * the token rides on `Sec-WebSocket-Protocol: bearer.<token>` —
+   * the only header the `WebSocket(url, protocols)` constructor
+   * exposes. The server (ws-broadcaster) reads either this
+   * subprotocol or the `?access_token=` query string (T-504b).
+   */
+  token?: () => string | undefined | null;
   /** Called on every decoded frame outcome. */
   onFrame: (result: DecodeResult) => void;
   /** Connection-state changes (UI bindings live here). */
@@ -95,7 +106,8 @@ export class WsClient {
 
     const Ctor = this.opts.WebSocketCtor ?? WebSocket;
     const url = this.buildUrl();
-    const sock = new Ctor(url);
+    const token = this.opts.token?.() ?? null;
+    const sock = token ? new Ctor(url, [`bearer.${token}`]) : new Ctor(url);
     this.socket = sock;
 
     sock.addEventListener("open", () => {

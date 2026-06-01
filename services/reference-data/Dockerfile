@@ -31,4 +31,4 @@ EXPOSE 3002
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 --start-period=10s \
   CMD curl -fsS http://localhost:3002/ready || exit 1
 
-CMD ["node", "--enable-source-maps", "--loader=tsx", "services/reference-data/src/main.ts"]
+CMD ["services/reference-data/node_modules/.bin/tsx", "services/reference-data/src/main.ts"]

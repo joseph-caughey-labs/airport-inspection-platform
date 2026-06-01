@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { seedAuth } from "../fixtures/auth-fixture";
 import { installWsFixture, presenceSnapshot, sensorFrame } from "../fixtures/ws-fixture";
 
 const AIRPORT_ID = "11111111-1111-1111-1111-aaaaaaaaaaaa";
@@ -26,6 +27,10 @@ const SENSOR_ID = "CAM-RWY10L-01";
  * the scenario fails loudly if reconnect / replay regress.
  */
 test.describe("scenario 04 — fixture-driven live feed", () => {
+  test.beforeEach(async ({ page }) => {
+    await seedAuth(page);
+  });
+
   test("presence snapshot + sensor frames render in the alert feed", async ({ page }) => {
     const fixture = await installWsFixture(page);
     await page.goto(`/airports/${AIRPORT_ID}`);

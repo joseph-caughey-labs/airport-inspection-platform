@@ -36,6 +36,56 @@ describe("api-gateway — metrics", () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toContain("text/plain");
   });
+
+  it("RED hook records http_requests_total per route", async () => {
+    // Drive a real request through the routed surface so the
+    // onResponse hook fires.
+    await app.inject({ method: "GET", url: "/api/v1/ping" });
+    const res = await app.inject({ method: "GET", url: "/metrics" });
+    // Label order in pino output is unspecified — assert presence not
+    // sequence.
+    const pingLine = res.body
+      .split("\n")
+      .find((l) => l.startsWith("http_requests_total{") && l.includes('route="/api/v1/ping"'));
+    expect(pingLine).toBeDefined();
+    expect(pingLine).toMatch(/method="get"/);
+    expect(pingLine).toMatch(/status="2xx"/);
+    expect(pingLine).toMatch(/\s\d+$/);
+  });
+
+  it("RED hook records duration histogram samples", async () => {
+    await app.inject({ method: "GET", url: "/api/v1/ping" });
+    const res = await app.inject({ method: "GET", url: "/metrics" });
+    const countLine = res.body
+      .split("\n")
+      .find(
+        (l) =>
+          l.startsWith("http_request_duration_seconds_count{") &&
+          l.includes('route="/api/v1/ping"'),
+      );
+    expect(countLine).toBeDefined();
+  });
+
+  it("RED hook skips /metrics + /health + /ready so scrape traffic doesn't dominate", async () => {
+    await app.inject({ method: "GET", url: "/health" });
+    await app.inject({ method: "GET", url: "/ready" });
+    await app.inject({ method: "GET", url: "/metrics" });
+    const res = await app.inject({ method: "GET", url: "/metrics" });
+    expect(res.body).not.toMatch(/route="\/metrics"/);
+    expect(res.body).not.toMatch(/route="\/health"/);
+    expect(res.body).not.toMatch(/route="\/ready"/);
+  });
+
+  it("RED hook records 4xx errors on http_errors_total", async () => {
+    // 404 surfaces via the notFoundHandler; the hook still observes
+    // it because reply.statusCode is already set when onResponse fires.
+    await app.inject({ method: "GET", url: "/nonexistent" });
+    const res = await app.inject({ method: "GET", url: "/metrics" });
+    const errorLine = res.body
+      .split("\n")
+      .find((l) => l.startsWith("http_errors_total{") && l.includes('status="4xx"'));
+    expect(errorLine).toBeDefined();
+  });
 });
 
 describe("api-gateway — request id", () => {
@@ -83,28 +133,27 @@ describe("api-gateway — /api/v1/ping", () => {
     expect(body.auth).toBeUndefined();
   });
 
-  it("attaches decoded auth when a well-formed Bearer token is present", async () => {
-    const userId = "11111111-2222-3333-4444-555555555555";
+  it("attaches decoded auth when a valid JWT is present (T-504)", async () => {
+    // Log in first to get a real signed access token, then call ping.
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/v1/auth/login",
+      payload: { email: "pat.operator@airport-ops.test" },
+    });
+    expect(login.statusCode).toBe(200);
+    const token = (login.json() as { access_token: string }).access_token;
+
     const res = await app.inject({
       method: "GET",
       url: "/api/v1/ping",
-      headers: { authorization: `Bearer ${userId}.operator` },
+      headers: { authorization: `Bearer ${token}` },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
-      auth?: { userId: string; role: string };
+      auth?: { user_id: string; role: string };
     };
-    expect(body.auth).toEqual({ userId, role: "operator" });
-  });
-
-  it("omits auth when the token role is invalid", async () => {
-    const res = await app.inject({
-      method: "GET",
-      url: "/api/v1/ping",
-      headers: { authorization: "Bearer some-id.god-mode" },
-    });
-    expect(res.statusCode).toBe(200);
-    expect((res.json() as { auth?: unknown }).auth).toBeUndefined();
+    expect(body.auth?.role).toBe("operator");
+    expect(body.auth?.user_id).toBe("33333333-1111-1111-1111-000000000001");
   });
 
   it("omits auth when the token is malformed", async () => {

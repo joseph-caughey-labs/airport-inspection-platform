@@ -1,6 +1,13 @@
 import { createLogger } from "@aip/logger";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../../../services/reference-data/src/app.js";
+import { bearer, makeTestSigner, operatorToken } from "../../helpers/auth.js";
+
+const signer = makeTestSigner();
+let opAuth: { authorization: string };
+beforeAll(async () => {
+  opAuth = bearer(await operatorToken(signer));
+});
 
 /**
  * Fake pg.Pool that supports just enough surface for `checkHealth`
@@ -39,7 +46,7 @@ const logger = createLogger({
 describe("reference-data — health endpoints", () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
   beforeAll(async () => {
-    app = await buildApp({ logger, pool: makeHealthyPool() });
+    app = await buildApp({ logger, pool: makeHealthyPool(), signer });
   });
   afterAll(async () => {
     await app.close();
@@ -60,7 +67,7 @@ describe("reference-data — health endpoints", () => {
   });
 
   it("GET /ready returns 503 when DB is unreachable", async () => {
-    const downApp = await buildApp({ logger, pool: makeUnhealthyPool() });
+    const downApp = await buildApp({ logger, pool: makeUnhealthyPool(), signer });
     const res = await downApp.inject({ method: "GET", url: "/ready" });
     expect(res.statusCode).toBe(503);
     const body = res.json() as { status: string; error?: string };
@@ -70,7 +77,7 @@ describe("reference-data — health endpoints", () => {
   });
 
   it("GET /ready does NOT leak stack traces", async () => {
-    const downApp = await buildApp({ logger, pool: makeUnhealthyPool() });
+    const downApp = await buildApp({ logger, pool: makeUnhealthyPool(), signer });
     const res = await downApp.inject({ method: "GET", url: "/ready" });
     const text = res.body;
     expect(text).not.toContain("at ");
@@ -82,14 +89,14 @@ describe("reference-data — health endpoints", () => {
 describe("reference-data — sop-baseline", () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
   beforeAll(async () => {
-    app = await buildApp({ logger, pool: makeHealthyPool() });
+    app = await buildApp({ logger, pool: makeHealthyPool(), signer });
   });
   afterAll(async () => {
     await app.close();
   });
 
   it("GET /sop-baseline returns the structured placeholder", async () => {
-    const res = await app.inject({ method: "GET", url: "/sop-baseline" });
+    const res = await app.inject({ method: "GET", url: "/sop-baseline", headers: opAuth });
     expect(res.statusCode).toBe(200);
     const body = res.json() as Record<string, unknown>;
     expect(body).toHaveProperty("snowbank");
@@ -98,7 +105,7 @@ describe("reference-data — sop-baseline", () => {
   });
 
   it("/sop-baseline.snowbank exposes height + setback thresholds", async () => {
-    const res = await app.inject({ method: "GET", url: "/sop-baseline" });
+    const res = await app.inject({ method: "GET", url: "/sop-baseline", headers: opAuth });
     const body = res.json() as {
       snowbank: { max_height_cm: number; runway_setback_min_m: number };
     };
@@ -107,7 +114,7 @@ describe("reference-data — sop-baseline", () => {
   });
 
   it("/sop-baseline.fod has location-severity mapping", async () => {
-    const res = await app.inject({ method: "GET", url: "/sop-baseline" });
+    const res = await app.inject({ method: "GET", url: "/sop-baseline", headers: opAuth });
     const body = res.json() as {
       fod: { location_severity: Record<string, string> };
     };
@@ -118,7 +125,7 @@ describe("reference-data — sop-baseline", () => {
 
 describe("reference-data — unknown routes", () => {
   it("returns 404 with no stack trace", async () => {
-    const app = await buildApp({ logger, pool: makeHealthyPool() });
+    const app = await buildApp({ logger, pool: makeHealthyPool(), signer });
     const res = await app.inject({ method: "GET", url: "/does-not-exist" });
     expect(res.statusCode).toBe(404);
     expect(res.body).not.toContain("at ");

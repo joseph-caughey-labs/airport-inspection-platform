@@ -1,7 +1,8 @@
 import { createLogger } from "@aip/logger";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../../../../services/incident-service/src/app.js";
 import { InMemoryIncidentRepository } from "../../../../services/incident-service/src/repository/index.js";
+import { adminToken, bearer, makeTestSigner } from "../../../helpers/auth.js";
 
 const logger = createLogger({ service: "incident-routes-test", level: "fatal" });
 
@@ -14,9 +15,27 @@ function fakePool(): import("pg").Pool {
 const AIRPORT = "11111111-1111-1111-1111-aaaaaaaaaaaa";
 const OTHER = "11111111-1111-1111-1111-bbbbbbbbbbbb";
 
+const signer = makeTestSigner();
+let auth: { authorization: string };
+beforeAll(async () => {
+  auth = bearer(await adminToken(signer));
+});
+
 async function build(repo?: InMemoryIncidentRepository) {
   const repository = repo ?? new InMemoryIncidentRepository();
-  const app = await buildApp({ logger, pool: fakePool(), repository });
+  const app = await buildApp({ logger, pool: fakePool(), repository, signer });
+  // Wrap `inject` so every call carries the suite's admin token by
+  // default. Tests in this file focus on route behaviour, not auth;
+  // auth-specific cases live in __TEST__/services/incident-service.
+  const originalInject = app.inject.bind(app);
+  app.inject = ((opts: Parameters<typeof originalInject>[0]) => {
+    if (typeof opts === "string") return originalInject({ url: opts, headers: auth });
+    const merged = {
+      ...opts,
+      headers: { ...((opts as { headers?: Record<string, string> }).headers ?? {}), ...auth },
+    };
+    return originalInject(merged);
+  }) as typeof originalInject;
   return { app, repository };
 }
 

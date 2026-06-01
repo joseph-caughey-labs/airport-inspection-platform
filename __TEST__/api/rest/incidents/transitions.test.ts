@@ -19,10 +19,11 @@
  * error matrix in `acknowledge.test.ts`.
  */
 import { createLogger } from "@aip/logger";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../../../../services/incident-service/src/app.js";
 import { RecordingIncidentEventPublisher } from "../../../../services/incident-service/src/events/index.js";
 import { InMemoryIncidentRepository } from "../../../../services/incident-service/src/repository/index.js";
+import { adminToken, bearer, makeTestSigner } from "../../../helpers/auth.js";
 
 const logger = createLogger({ service: "transitions-test", level: "fatal" });
 
@@ -36,10 +37,28 @@ const AIRPORT = "11111111-1111-1111-1111-aaaaaaaaaaaa";
 const OPERATOR = "33333333-3333-3333-3333-333333333333";
 const ASSIGNEE = "44444444-4444-4444-4444-444444444444";
 
+const signer = makeTestSigner();
+let auth: { authorization: string };
+beforeAll(async () => {
+  auth = bearer(await adminToken(signer));
+});
+
 async function build() {
   const repository = new InMemoryIncidentRepository();
   const events = new RecordingIncidentEventPublisher();
-  const app = await buildApp({ logger, pool: fakePool(), repository, events });
+  const app = await buildApp({ logger, pool: fakePool(), repository, events, signer });
+  // Wrap inject so every call carries the suite's admin token. Auth-
+  // specific cases (401 / 403 by role) live in the service's own
+  // app.test.ts; this file is about lifecycle behaviour.
+  const originalInject = app.inject.bind(app);
+  app.inject = ((opts: Parameters<typeof originalInject>[0]) => {
+    if (typeof opts === "string") return originalInject({ url: opts, headers: auth });
+    const merged = {
+      ...opts,
+      headers: { ...((opts as { headers?: Record<string, string> }).headers ?? {}), ...auth },
+    };
+    return originalInject(merged);
+  }) as typeof originalInject;
   return { app, repository, events };
 }
 
@@ -412,7 +431,17 @@ describe("Transition publish failure isolation", () => {
         if (calls === 4) throw new Error("broker offline");
       }),
     };
-    const app = await buildApp({ logger, pool: fakePool(), repository, events });
+    const app = await buildApp({ logger, pool: fakePool(), repository, events, signer });
+    // Same inject wrapper the `build()` helper installs.
+    const originalInject = app.inject.bind(app);
+    app.inject = ((opts: Parameters<typeof originalInject>[0]) => {
+      if (typeof opts === "string") return originalInject({ url: opts, headers: auth });
+      const merged = {
+        ...opts,
+        headers: { ...((opts as { headers?: Record<string, string> }).headers ?? {}), ...auth },
+      };
+      return originalInject(merged);
+    }) as typeof originalInject;
     const incident = await repository.create({
       airport_id: AIRPORT,
       severity: "high",

@@ -1,6 +1,6 @@
 {
   "name": "@aip/reference-data",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Source-of-truth registry: airports, runways, sensors, SOP baseline. Read-only REST API consumed by the validation engine (Layer 4) and the operator dashboard.",
   "license": "SEE LICENSE IN ../../LICENSE",
@@ -15,7 +15,9 @@
     "start": "tsx src/main.ts"
   },
   "dependencies": {
+    "@aip/auth-jwt": "workspace:*",
     "@aip/db-schema": "workspace:*",
+    "@aip/http-safety": "workspace:*",
     "@aip/logger": "workspace:*",
     "@aip/metrics": "workspace:*",
     "@aip/postgres-client": "workspace:*",

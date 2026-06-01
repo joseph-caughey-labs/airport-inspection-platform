@@ -13,8 +13,22 @@ import {
   GENESIS_PREV_HASH,
   type HashableAuditEntry,
 } from "../../../services/audit-service/src/chain/hash.js";
+import { bearer, makeTestSigner, operatorToken, reviewerToken } from "../../helpers/auth.js";
 
 const logger = createLogger({ service: "audit-service-test", level: "fatal" });
+
+// One signer per file, used to mint tokens AND wired through every
+// `buildApp` call so the per-route requireRole guards (T-504c) see
+// the same key the test's tokens were signed with.
+const signer = makeTestSigner();
+let opAuth: { authorization: string };
+let revAuth: { authorization: string };
+// Resolve once before the suites run; vitest awaits this via
+// beforeAll because top-level await isn't enabled in this config.
+beforeAll(async () => {
+  opAuth = bearer(await operatorToken(signer));
+  revAuth = bearer(await reviewerToken(signer));
+});
 
 function healthyRedis(): import("ioredis").default {
   return { ping: vi.fn(async () => "PONG") } as unknown as import("ioredis").default;
@@ -71,6 +85,7 @@ describe("audit-service — /audit/events list", () => {
   beforeAll(async () => {
     app = await buildApp({
       logger,
+      signer,
       redis: healthyRedis(),
       pool: fakePool([
         {
@@ -85,7 +100,7 @@ describe("audit-service — /audit/events list", () => {
   });
 
   it("returns items newest-first + null cursor when fully drained", async () => {
-    const res = await app.inject({ method: "GET", url: "/audit/events" });
+    const res = await app.inject({ method: "GET", url: "/audit/events", headers: opAuth });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { items: { event_id: string }[]; next_cursor: string | null };
     expect(body.items.map((i) => i.event_id)).toEqual([r3.event_id, r2.event_id, r1.event_id]);
@@ -97,6 +112,7 @@ describe("audit-service — /audit/events list (cursor)", () => {
   it("returns next_cursor when more rows exist", async () => {
     const app = await buildApp({
       logger,
+      signer,
       redis: healthyRedis(),
       // 4 rows but limit=3 → next_cursor surfaces.
       pool: fakePool([
@@ -107,7 +123,11 @@ describe("audit-service — /audit/events list (cursor)", () => {
       ]),
       listPageLimit: 3,
     });
-    const res = await app.inject({ method: "GET", url: "/audit/events?limit=3" });
+    const res = await app.inject({
+      method: "GET",
+      url: "/audit/events?limit=3",
+      headers: opAuth,
+    });
     expect((res.json() as { next_cursor: string | null }).next_cursor).not.toBeNull();
     await app.close();
   });
@@ -115,10 +135,15 @@ describe("audit-service — /audit/events list (cursor)", () => {
   it("rejects a malformed cursor with 400", async () => {
     const app = await buildApp({
       logger,
+      signer,
       redis: healthyRedis(),
       pool: fakePool([{ match: /./, rows: () => [] }]),
     });
-    const res = await app.inject({ method: "GET", url: "/audit/events?cursor=!!!" });
+    const res = await app.inject({
+      method: "GET",
+      url: "/audit/events?cursor=!!!",
+      headers: opAuth,
+    });
     expect(res.statusCode).toBe(400);
     expect((res.json() as { error: { code: string } }).error.code).toBe("INVALID_CURSOR");
     await app.close();
@@ -129,10 +154,15 @@ describe("audit-service — /audit/events/:event_id", () => {
   it("returns 400 INVALID_ID on a non-uuid", async () => {
     const app = await buildApp({
       logger,
+      signer,
       redis: healthyRedis(),
       pool: fakePool([{ match: /./, rows: () => [] }]),
     });
-    const res = await app.inject({ method: "GET", url: "/audit/events/not-a-uuid" });
+    const res = await app.inject({
+      method: "GET",
+      url: "/audit/events/not-a-uuid",
+      headers: opAuth,
+    });
     expect(res.statusCode).toBe(400);
     await app.close();
   });
@@ -140,12 +170,14 @@ describe("audit-service — /audit/events/:event_id", () => {
   it("returns 404 when nothing matches", async () => {
     const app = await buildApp({
       logger,
+      signer,
       redis: healthyRedis(),
       pool: fakePool([{ match: /WHERE event_id/i, rows: () => [] }]),
     });
     const res = await app.inject({
       method: "GET",
       url: `/audit/events/${r1.event_id}`,
+      headers: opAuth,
     });
     expect(res.statusCode).toBe(404);
     expect((res.json() as { error: { code: string } }).error.code).toBe("AUDIT_EVENT_NOT_FOUND");
@@ -157,10 +189,15 @@ describe("audit-service — /audit/lineage/:subject_id", () => {
   it("returns all events for a subject oldest-first", async () => {
     const app = await buildApp({
       logger,
+      signer,
       redis: healthyRedis(),
       pool: fakePool([{ match: /WHERE subject_id/i, rows: () => [r1, r2, r3] }]),
     });
-    const res = await app.inject({ method: "GET", url: "/audit/lineage/subject-1" });
+    const res = await app.inject({
+      method: "GET",
+      url: "/audit/lineage/subject-1",
+      headers: opAuth,
+    });
     const body = res.json() as { items: { event_id: string }[]; total: number };
     expect(body.items.map((i) => i.event_id)).toEqual([r1.event_id, r2.event_id, r3.event_id]);
     expect(body.total).toBe(3);
@@ -172,6 +209,7 @@ describe("audit-service — /audit/verify", () => {
   it("returns verified=true for an untampered chain", async () => {
     const app = await buildApp({
       logger,
+      signer,
       redis: healthyRedis(),
       pool: fakePool([
         {
@@ -182,7 +220,12 @@ describe("audit-service — /audit/verify", () => {
         { match: /FROM audit_events/i, rows: () => [r1, r2, r3] },
       ]),
     });
-    const res = await app.inject({ method: "POST", url: "/audit/verify", payload: {} });
+    const res = await app.inject({
+      method: "POST",
+      url: "/audit/verify",
+      payload: {},
+      headers: revAuth,
+    });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { verified: boolean; broken_at: unknown; rows_scanned: number };
     expect(body.verified).toBe(true);
@@ -195,6 +238,7 @@ describe("audit-service — /audit/verify", () => {
     const tampered: FakeRow = { ...r2, payload: { evil: true } };
     const app = await buildApp({
       logger,
+      signer,
       redis: healthyRedis(),
       pool: fakePool([
         {
@@ -204,7 +248,12 @@ describe("audit-service — /audit/verify", () => {
         { match: /FROM audit_events/i, rows: () => [r1, tampered, r3] },
       ]),
     });
-    const res = await app.inject({ method: "POST", url: "/audit/verify", payload: {} });
+    const res = await app.inject({
+      method: "POST",
+      url: "/audit/verify",
+      payload: {},
+      headers: revAuth,
+    });
     const body = res.json() as { verified: boolean; broken_at: { broken_at_event_id: string } };
     expect(body.verified).toBe(false);
     expect(body.broken_at.broken_at_event_id).toBe(r2.event_id);
@@ -214,6 +263,7 @@ describe("audit-service — /audit/verify", () => {
   it("rejects when the requested range exceeds verifyMaxRows", async () => {
     const app = await buildApp({
       logger,
+      signer,
       redis: healthyRedis(),
       pool: fakePool([
         {
@@ -224,7 +274,12 @@ describe("audit-service — /audit/verify", () => {
       ]),
       verifyMaxRows: 2,
     });
-    const res = await app.inject({ method: "POST", url: "/audit/verify", payload: {} });
+    const res = await app.inject({
+      method: "POST",
+      url: "/audit/verify",
+      payload: {},
+      headers: revAuth,
+    });
     expect(res.statusCode).toBe(400);
     expect((res.json() as { error: { code: string } }).error.code).toBe("VERIFY_RANGE_TOO_LARGE");
     await app.close();
@@ -235,6 +290,7 @@ describe("audit-service — health + ready", () => {
   it("GET /health returns 200", async () => {
     const app = await buildApp({
       logger,
+      signer,
       redis: healthyRedis(),
       pool: fakePool([{ match: /./, rows: () => [{ "?column?": 1 }] }]),
     });
@@ -246,6 +302,7 @@ describe("audit-service — health + ready", () => {
   it("GET /ready returns 200 when both deps are up", async () => {
     const app = await buildApp({
       logger,
+      signer,
       redis: healthyRedis(),
       pool: fakePool([{ match: /./, rows: () => [{ "?column?": 1 }] }]),
     });

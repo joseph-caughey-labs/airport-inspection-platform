@@ -18,4 +18,4 @@ ENV NODE_ENV=production
 EXPOSE 3003
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 --start-period=10s \
   CMD curl -fsS http://localhost:3003/ready || exit 1
-CMD ["node", "--enable-source-maps", "--loader=tsx", "services/sensor-gateway/src/main.ts"]
+CMD ["services/sensor-gateway/node_modules/.bin/tsx", "services/sensor-gateway/src/main.ts"]

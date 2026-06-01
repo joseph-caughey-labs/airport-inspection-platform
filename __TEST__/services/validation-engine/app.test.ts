@@ -2,21 +2,36 @@ import { createLogger } from "@aip/logger";
 import { createRegistry } from "@aip/metrics";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../../../services/validation-engine/src/app.js";
+import { bearer, makeTestSigner, operatorToken } from "../../helpers/auth.js";
 
 const logger = createLogger({ service: "validation-engine-test", level: "fatal" });
+
+// One signer for the suite. Tokens are minted in `beforeAll` because
+// `signAccess()` is async and this test file is not configured for
+// top-level await.
+const signer = makeTestSigner();
+let opAuth: { authorization: string };
 
 /**
  * Canonical AI-detection envelope that satisfies L1 (T-406). HTTP
  * tests use this whenever they need a 200/certified=true path —
  * before T-406 we got away with `{}` because L1 was a stub.
+ *
+ * Both `timestamp` and `captured_at` are derived from a SINGLE
+ * `now` snapshot — L6 (`CAPTURED_AT_AFTER_ENVELOPE`) rejects
+ * payloads where `captured_at > timestamp`. Earlier versions
+ * called `new Date().toISOString()` twice, which produced a
+ * captured_at one millisecond after timestamp on slow runners
+ * and flaked CI (recurring on PR #153, #156).
  */
 function validSubmissionPayload(): unknown {
+  const now = new Date().toISOString();
   return {
     event_id: "11111111-2222-3333-4444-555555555555",
     event_type: "ai.detection.fod.emitted",
     schema_version: "v1",
     source: { service: "http-surface-test" },
-    timestamp: new Date().toISOString(),
+    timestamp: now,
     payload: {
       detection_id: "det-001",
       sensor_id: "CAM-N-03",
@@ -24,7 +39,7 @@ function validSubmissionPayload(): unknown {
       detection_class: "fod",
       confidence: 0.5,
       severity_hint: "high",
-      captured_at: new Date().toISOString(),
+      captured_at: now,
     },
   };
 }
@@ -32,8 +47,10 @@ function validSubmissionPayload(): unknown {
 describe("validation-engine — HTTP surface", () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
   beforeAll(async () => {
+    opAuth = bearer(await operatorToken(signer));
     app = await buildApp({
       logger,
+      signer,
       registry: createRegistry({
         service: "validation-engine-test",
         collectDefault: false,
@@ -55,11 +72,21 @@ describe("validation-engine — HTTP surface", () => {
     expect(res.headers["content-type"]).toContain("text/plain");
   });
 
+  it("POST /validate returns 401 without a bearer token", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/validate",
+      payload: { payload: validSubmissionPayload() },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
   it("POST /validate returns a run with 10 passed layers on a valid envelope", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/validate",
       payload: { payload: validSubmissionPayload() },
+      headers: opAuth,
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
@@ -79,6 +106,7 @@ describe("validation-engine — HTTP surface", () => {
       method: "POST",
       url: "/validate",
       payload: { payload: {} },
+      headers: opAuth,
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
@@ -96,6 +124,7 @@ describe("validation-engine — HTTP surface", () => {
       method: "POST",
       url: "/validate",
       payload: { submission_id: "not-a-uuid", payload: validSubmissionPayload() },
+      headers: opAuth,
     });
     expect(res.statusCode).toBe(400);
     expect((res.json() as { error: { code: string } }).error.code).toBe("validation_failed");
@@ -107,6 +136,7 @@ describe("validation-engine — HTTP surface", () => {
       method: "POST",
       url: "/validate",
       payload: { submission_id: id, payload: validSubmissionPayload() },
+      headers: opAuth,
     });
     expect(res.statusCode).toBe(200);
     expect((res.json() as { submission_id: string }).submission_id).toBe(id);
@@ -117,6 +147,7 @@ describe("validation-engine — HTTP surface", () => {
       method: "POST",
       url: "/validate",
       payload: { payload: validSubmissionPayload() },
+      headers: opAuth,
     });
     const metricsRes = await app.inject({ method: "GET", url: "/metrics" });
     expect(metricsRes.body).toMatch(/validation_runs_total\{[^}]*certified="true"[^}]*\}\s+\d+/);
@@ -127,6 +158,7 @@ describe("validation-engine — HTTP surface", () => {
       method: "POST",
       url: "/validate",
       payload: { payload: validSubmissionPayload() },
+      headers: opAuth,
     });
     const metricsRes = await app.inject({ method: "GET", url: "/metrics" });
     // At least 01_input through 10_certification appear with passed=true.

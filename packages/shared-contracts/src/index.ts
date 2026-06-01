@@ -5,3 +5,4 @@ export * from "./api/index.js";
 export * from "./ws/index.js";
 export * from "./errors/index.js";
 export * from "./validation/index.js";
+export * from "./auth/index.js";

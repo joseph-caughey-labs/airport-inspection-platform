@@ -41,6 +41,10 @@ export interface AuditApiOptions {
   fetchFn?: typeof fetch;
   /** Base URL for the audit-service. Empty string uses same-origin. */
   baseUrl?: string;
+  /** Returns the current access token (per-request lookup). */
+  tokenProvider?: () => string | null;
+  /** Refresh callback for the 401-retry path. See IncidentApi. */
+  onUnauthorized?: () => Promise<string | null>;
 }
 
 export class AuditApiError extends Error {
@@ -56,10 +60,14 @@ export class AuditApiError extends Error {
 export class AuditApi {
   private readonly fetchFn: typeof fetch;
   private readonly baseUrl: string;
+  private readonly tokenProvider: () => string | null;
+  private readonly onUnauthorized: (() => Promise<string | null>) | undefined;
 
   constructor(opts: AuditApiOptions = {}) {
     this.fetchFn = opts.fetchFn ?? globalThis.fetch.bind(globalThis);
     this.baseUrl = opts.baseUrl ?? "";
+    this.tokenProvider = opts.tokenProvider ?? (() => null);
+    this.onUnauthorized = opts.onUnauthorized;
   }
 
   /**
@@ -68,9 +76,17 @@ export class AuditApi {
    * incident detail open + on each transition that completes.
    */
   async lineage(subjectId: string): Promise<LineageResponse> {
-    const res = await this.fetchFn(
-      `${this.baseUrl}/audit/lineage/${encodeURIComponent(subjectId)}`,
-    );
+    const url = `${this.baseUrl}/audit/lineage/${encodeURIComponent(subjectId)}`;
+    const send = (token: string | null): Promise<Response> => {
+      const headers: Record<string, string> = {};
+      if (token) headers["authorization"] = `Bearer ${token}`;
+      return this.fetchFn(url, { headers });
+    };
+    let res = await send(this.tokenProvider());
+    if (res.status === 401 && this.onUnauthorized) {
+      const fresh = await this.onUnauthorized();
+      if (fresh) res = await send(fresh);
+    }
     if (!res.ok) {
       throw new AuditApiError(res.status, `audit lineage request failed: ${res.status}`);
     }

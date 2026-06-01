@@ -1,15 +1,24 @@
+import { createJwtSigner } from "@aip/auth-jwt";
 import { createLogger } from "@aip/logger";
+import { createRegistry } from "@aip/metrics";
 import { createPgPool } from "@aip/postgres-client";
 import { createRedis } from "@aip/redis-client";
 import { buildApp } from "./app.js";
 import { AuditChainWriter } from "./chain/writer.js";
 import { IncidentTransitionsSubscriber } from "./subscribers/incident-transitions.js";
+import { SecurityEventsSubscriber } from "./subscribers/security-events.js";
 
 async function main(): Promise<void> {
   const logger = createLogger({ service: "audit-service" });
-  // Two Redis clients: one for the subscriber loop (cannot share
-  // with command/PUBLISH usage) and one for healthcheck PINGs.
-  const redisSub = createRedis({
+  const registry = createRegistry({ service: "audit-service" });
+  // Three Redis clients: one per psubscribe loop (ioredis enforces
+  // a dedicated connection for pattern subscriptions) and one for
+  // healthcheck PINGs.
+  const redisIncidents = createRedis({
+    host: process.env["REDIS_HOST"] ?? "redis",
+    port: Number(process.env["REDIS_PORT"] ?? 6379),
+  });
+  const redisSecurity = createRedis({
     host: process.env["REDIS_HOST"] ?? "redis",
     port: Number(process.env["REDIS_PORT"] ?? 6379),
   });
@@ -26,23 +35,36 @@ async function main(): Promise<void> {
   });
 
   const writer = new AuditChainWriter(pool);
-  const subscriber = new IncidentTransitionsSubscriber({
-    redis: redisSub,
+  const incidentSubscriber = new IncidentTransitionsSubscriber({
+    redis: redisIncidents,
     writer,
     logger,
   });
-  await subscriber.start();
+  await incidentSubscriber.start();
+  // T-506 — same writer, second channel pattern.
+  const securitySubscriber = new SecurityEventsSubscriber({
+    redis: redisSecurity,
+    writer,
+    logger,
+  });
+  await securitySubscriber.start();
 
-  const app = await buildApp({ logger, redis: redisHealth, pool });
+  const signer = createJwtSigner({
+    secret: process.env["JWT_SECRET"] ?? "dev-only-secret-shared-with-api-gateway-32-bytes-min",
+    issuer: "aip-api-gateway",
+  });
+
+  const app = await buildApp({ logger, redis: redisHealth, pool, registry, signer });
   const port = Number(process.env["PORT"] ?? 3007);
   await app.listen({ port, host: "0.0.0.0" });
   logger.info({ port }, "audit-service ready");
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.warn({ signal }, "shutting down");
-    await subscriber.stop();
+    await Promise.all([incidentSubscriber.stop(), securitySubscriber.stop()]);
     await app.close();
-    redisSub.disconnect();
+    redisIncidents.disconnect();
+    redisSecurity.disconnect();
     redisHealth.disconnect();
     await pool.end();
     process.exit(0);
