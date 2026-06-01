@@ -25,6 +25,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,vue,js,mjs,cjs,json,md,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,vue,js,mjs,cjs,json,md,yaml,yml}\"",
     "e2e": "playwright test --config=__TEST__/e2e/playwright.config.ts",
+    "e2e:integration": "playwright test --config=__TEST__/e2e/playwright.integration.config.ts",
     "e2e:install": "playwright install --with-deps chromium",
     "clean": "turbo run clean && rm -rf node_modules .turbo"
   },

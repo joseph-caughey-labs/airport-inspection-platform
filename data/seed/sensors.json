@@ -44,7 +44,7 @@
     "created_at": "2026-01-01T00:00:00.000Z"
   },
   {
-    "id": "PRM-PERIMETER-N-01",
+    "id": "PRM-PERIMN-01",
     "airport_id": "11111111-1111-1111-1111-aaaaaaaaaaaa",
     "type": "perimeter",
     "lat": 37.6298,

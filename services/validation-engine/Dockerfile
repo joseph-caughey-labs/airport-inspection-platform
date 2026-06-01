@@ -18,4 +18,4 @@ ENV NODE_ENV=production
 EXPOSE 3009
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 --start-period=10s \
   CMD curl -fsS http://localhost:3009/ready || exit 1
-CMD ["node", "--enable-source-maps", "--loader=tsx", "services/validation-engine/src/main.ts"]
+CMD ["services/validation-engine/node_modules/.bin/tsx", "services/validation-engine/src/main.ts"]

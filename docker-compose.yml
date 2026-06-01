@@ -53,8 +53,16 @@ services:
     environment:
       PORT: 3001
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # T-506: api-gateway publishes security events on Redis.
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Shared with every downstream service so JWT verify matches issue.
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-shared-with-api-gateway-32-bytes-min}
     ports:
       - "3001:3001"
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:3001/ready"]
       interval: 10s
@@ -132,6 +140,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-shared-with-api-gateway-32-bytes-min}
     ports:
       - "3005:3005"
     depends_on:
@@ -160,6 +169,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-airport_ops}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-dev}
       POSTGRES_DB: ${POSTGRES_DB:-airport_inspection}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-shared-with-api-gateway-32-bytes-min}
     ports:
       - "3006:3006"
     depends_on:
@@ -190,6 +200,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-airport_ops}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-dev}
       POSTGRES_DB: ${POSTGRES_DB:-airport_inspection}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-shared-with-api-gateway-32-bytes-min}
     ports:
       - "3007:3007"
     depends_on:
@@ -217,6 +228,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-shared-with-api-gateway-32-bytes-min}
     ports:
       - "3008:3008"
     depends_on:
@@ -265,6 +277,7 @@ services:
     environment:
       PORT: 3009
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-shared-with-api-gateway-32-bytes-min}
     ports:
       - "3009:3009"
     healthcheck:
@@ -290,6 +303,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-airport_ops}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-dev}
       POSTGRES_DB: ${POSTGRES_DB:-airport_inspection}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-shared-with-api-gateway-32-bytes-min}
     ports:
       - "3002:3002"
     depends_on:
