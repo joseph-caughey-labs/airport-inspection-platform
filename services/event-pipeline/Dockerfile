@@ -18,4 +18,4 @@ ENV NODE_ENV=production
 EXPOSE 3004
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 --start-period=15s \
   CMD curl -fsS http://localhost:3004/ready || exit 1
-CMD ["node", "--enable-source-maps", "--loader=tsx", "services/event-pipeline/src/main.ts"]
+CMD ["services/event-pipeline/node_modules/.bin/tsx", "services/event-pipeline/src/main.ts"]

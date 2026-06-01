@@ -18,4 +18,4 @@ ENV NODE_ENV=production
 EXPOSE 3007
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 --start-period=15s \
   CMD curl -fsS http://localhost:3007/ready || exit 1
-CMD ["node", "--enable-source-maps", "--loader=tsx", "services/audit-service/src/main.ts"]
+CMD ["services/audit-service/node_modules/.bin/tsx", "services/audit-service/src/main.ts"]
