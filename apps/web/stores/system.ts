@@ -15,7 +15,7 @@ export const useSystemStore = defineStore("system", {
   state: (): SystemState => ({
     connection: "connecting",
     airportIcao: null,
-    version: "0.4.0",
+    version: "0.5.0",
   }),
   getters: {
     isConnected: (s): boolean => s.connection === "connected",

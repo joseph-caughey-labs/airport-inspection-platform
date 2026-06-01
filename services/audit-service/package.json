@@ -1,6 +1,6 @@
 {
   "name": "@aip/audit-service",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Append-only audit log + hash chain. This PR adds the shell with /audit/events listing; hash-chain implementation lands in T-412.",
   "license": "SEE LICENSE IN ../../LICENSE",
