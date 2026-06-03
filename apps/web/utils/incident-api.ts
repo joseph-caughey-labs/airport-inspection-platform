@@ -44,7 +44,14 @@ export class IncidentApiError extends Error {
 export interface IncidentApiOptions {
   /** Override fetch (tests inject a mock). */
   fetchFn?: typeof fetch;
-  /** Base URL for the incident-service. Empty string uses same-origin. */
+  /**
+   * Base URL for incident writes. Default `/api/v1/incidents` —
+   * the api-gateway's reverse-proxy prefix in front of
+   * incident-service. Empty string would address incident-service
+   * directly (e.g. via an older nginx route); the default routes
+   * through api-gateway so the auth + rate-limit posture stays
+   * uniform with the rest of the public surface.
+   */
   baseUrl?: string;
   /**
    * Returns the current access token (or null when unauthenticated).
@@ -71,48 +78,48 @@ export class IncidentApi {
     // Bind fetch to globalThis so the standard fetch isn't called as a
     // method of `IncidentApi` (which would lose its receiver).
     this.fetchFn = opts.fetchFn ?? globalThis.fetch.bind(globalThis);
-    this.baseUrl = opts.baseUrl ?? "";
+    this.baseUrl = opts.baseUrl ?? "/api/v1/incidents";
     this.tokenProvider = opts.tokenProvider ?? (() => null);
     this.onUnauthorized = opts.onUnauthorized;
   }
 
   /**
-   * POST /incidents/:id/acknowledge — transitions a new incident to
+   * `POST /:id/acknowledge` — transitions a new incident to
    * `acknowledged`. Throws `IncidentApiError` on 4xx with the canonical
    * code; the caller maps it to the operator-facing message.
    */
   async acknowledge(id: string, body: AcknowledgeIncidentRequest): Promise<Incident> {
-    return this.post<Incident>(`/incidents/${id}/acknowledge`, body);
+    return this.post<Incident>(`/${id}/acknowledge`, body);
   }
 
-  /** POST /incidents/:id/assign — `acknowledged` → `assigned`. */
+  /** `POST /:id/assign` — `acknowledged` → `assigned`. */
   async assign(id: string, body: AssignIncidentRequest): Promise<Incident> {
-    return this.post<Incident>(`/incidents/${id}/assign`, body);
+    return this.post<Incident>(`/${id}/assign`, body);
   }
 
-  /** POST /incidents/:id/start_progress — `assigned` → `in_progress`. */
+  /** `POST /:id/start_progress` — `assigned` → `in_progress`. */
   async startProgress(id: string, body: StartProgressIncidentRequest): Promise<Incident> {
-    return this.post<Incident>(`/incidents/${id}/start_progress`, body);
+    return this.post<Incident>(`/${id}/start_progress`, body);
   }
 
-  /** POST /incidents/:id/resolve — `in_progress` (or `escalated`) → `resolved`. */
+  /** `POST /:id/resolve` — `in_progress` (or `escalated`) → `resolved`. */
   async resolve(id: string, body: ResolveIncidentRequest): Promise<Incident> {
-    return this.post<Incident>(`/incidents/${id}/resolve`, body);
+    return this.post<Incident>(`/${id}/resolve`, body);
   }
 
-  /** POST /incidents/:id/escalate — any active state → `escalated`. */
+  /** `POST /:id/escalate` — any active state → `escalated`. */
   async escalate(id: string, body: EscalateIncidentRequest): Promise<Incident> {
-    return this.post<Incident>(`/incidents/${id}/escalate`, body);
+    return this.post<Incident>(`/${id}/escalate`, body);
   }
 
-  /** POST /incidents/:id/archive — `resolved` → `archived` (terminal). */
+  /** `POST /:id/archive` — `resolved` → `archived` (terminal). */
   async archive(id: string, body: ArchiveIncidentRequest): Promise<Incident> {
-    return this.post<Incident>(`/incidents/${id}/archive`, body);
+    return this.post<Incident>(`/${id}/archive`, body);
   }
 
-  /** POST /incidents/:id/reject — any non-terminal → `rejected` (terminal). */
+  /** `POST /:id/reject` — any non-terminal → `rejected` (terminal). */
   async reject(id: string, body: RejectIncidentRequest): Promise<Incident> {
-    return this.post<Incident>(`/incidents/${id}/reject`, body);
+    return this.post<Incident>(`/${id}/reject`, body);
   }
 
   private async post<T>(path: string, body: unknown): Promise<T> {
