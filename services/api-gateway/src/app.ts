@@ -13,6 +13,7 @@ import {
   RecordingSecurityEventPublisher,
   type SecurityEventPublisher,
 } from "@aip/security-events";
+import httpProxy from "@fastify/http-proxy";
 import rateLimit from "@fastify/rate-limit";
 import Fastify from "fastify";
 import { createInMemoryDirectory } from "./auth/directory.js";
@@ -48,6 +49,17 @@ export interface BuildAppOptions {
    * a live Redis.
    */
   securityEvents?: SecurityEventPublisher;
+  /**
+   * Upstream URLs for the proxy routes that front audit-service
+   * + incident-service (T-507 follow-up). Tests pass empty strings
+   * to skip the proxy registration (the routes don't need to exist
+   * for unit tests that don't exercise them). Production reads
+   * `AUDIT_SERVICE_URL` / `INCIDENT_SERVICE_URL` from main.ts.
+   */
+  upstreams?: {
+    audit?: string;
+    incident?: string;
+  };
 }
 
 const TEST_SECRET = "test-only-secret-do-not-use-in-prod-32-bytes-minimum-thanks";
@@ -65,6 +77,7 @@ export async function buildApp({
   directory,
   rateLimitDisabled,
   securityEvents,
+  upstreams,
 }: BuildAppOptions) {
   // Default to the in-memory recorder so tests don't need to opt
   // into emission. Production passes the Redis-backed publisher.
@@ -195,6 +208,35 @@ export async function buildApp({
   app.get("/api/v1/admin/echo", { preHandler: requireRole("admin") }, async (req) => ({
     admin: req.auth!.user_id,
   }));
+
+  // ── Reverse-proxy: backend services behind /api/v1 ──────────────
+  // Front audit-service + incident-service through api-gateway so
+  // the public surface is one host with one auth point, one
+  // rate-limit budget, one error envelope. Tests that skip these
+  // upstreams (pass empty strings or omit) get a 404 from the
+  // safeNotFoundHandler when something tries to hit them — which
+  // is fine because those unit tests don't proxy.
+  //
+  // The downstream services still verify the Bearer token + run
+  // their own `requireRole` preHandlers; api-gateway forwards the
+  // Authorization header unchanged. No security gap, no double-
+  // verify cost beyond the JWT parse.
+  if (upstreams?.audit) {
+    await app.register(httpProxy, {
+      upstream: upstreams.audit,
+      prefix: "/api/v1/audit",
+      rewritePrefix: "/audit",
+      http2: false,
+    });
+  }
+  if (upstreams?.incident) {
+    await app.register(httpProxy, {
+      upstream: upstreams.incident,
+      prefix: "/api/v1/incidents",
+      rewritePrefix: "/incidents",
+      http2: false,
+    });
+  }
 
   return app;
 }

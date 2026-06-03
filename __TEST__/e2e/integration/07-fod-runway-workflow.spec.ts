@@ -120,8 +120,8 @@ test.describe("scenario 07 (integration) — FOD on active runway, real stack", 
     const { token, userId } = await login(request);
     const headers = { authorization: `Bearer ${token}` };
 
-    // 1. Create an incident via incident-service (nginx /incidents/).
-    const create = await request.post("/incidents", {
+    // 1. Create an incident via api-gateway → incident-service.
+    const create = await request.post("/api/v1/incidents", {
       headers,
       data: {
         airport_id: AIRPORT_ID,
@@ -137,14 +137,14 @@ test.describe("scenario 07 (integration) — FOD on active runway, real stack", 
     // 2. Walk the lifecycle. Each transition publishes on Redis;
     //    audit-service's subscriber hash-chains it.
     for (const step of [
-      { url: `/incidents/${incidentId}/acknowledge`, body: { operator_id: userId } },
+      { url: `/api/v1/incidents/${incidentId}/acknowledge`, body: { operator_id: userId } },
       {
-        url: `/incidents/${incidentId}/assign`,
+        url: `/api/v1/incidents/${incidentId}/assign`,
         body: { operator_id: userId, assignee_id: userId },
       },
-      { url: `/incidents/${incidentId}/start_progress`, body: { operator_id: userId } },
+      { url: `/api/v1/incidents/${incidentId}/start_progress`, body: { operator_id: userId } },
       {
-        url: `/incidents/${incidentId}/resolve`,
+        url: `/api/v1/incidents/${incidentId}/resolve`,
         body: { operator_id: userId, resolution_summary: "FOD removed; runway swept" },
       },
     ]) {
@@ -158,7 +158,7 @@ test.describe("scenario 07 (integration) — FOD on active runway, real stack", 
     await expect
       .poll(
         async () => {
-          const r = await request.get(`/audit/lineage/${incidentId}`, { headers });
+          const r = await request.get(`/api/v1/audit/lineage/${incidentId}`, { headers });
           if (r.status() !== 200) return -1;
           const body = (await r.json()) as { total: number };
           return body.total;

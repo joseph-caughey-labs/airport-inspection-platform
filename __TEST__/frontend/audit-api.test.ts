@@ -17,7 +17,7 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 describe("AuditApi.lineage", () => {
-  it("GETs /audit/lineage/:id and returns the parsed envelope", async () => {
+  it("GETs /api/v1/audit/lineage/:id (the default api-gateway base) and returns the parsed envelope", async () => {
     const body = {
       subject_id: INCIDENT_ID,
       items: [
@@ -41,7 +41,7 @@ describe("AuditApi.lineage", () => {
     const fetchFn = vi.fn(async () => jsonResponse(200, body));
     const api = new AuditApi({ fetchFn });
     const result = await api.lineage(INCIDENT_ID);
-    expect(fetchFn.mock.calls[0]![0]).toBe(`/audit/lineage/${INCIDENT_ID}`);
+    expect(fetchFn.mock.calls[0]![0]).toBe(`/api/v1/audit/lineage/${INCIDENT_ID}`);
     expect(result.items).toHaveLength(1);
     expect(result.subject_id).toBe(INCIDENT_ID);
   });
@@ -50,7 +50,7 @@ describe("AuditApi.lineage", () => {
     const fetchFn = vi.fn(async () => jsonResponse(200, { subject_id: "x", items: [], total: 0 }));
     const api = new AuditApi({ fetchFn });
     await api.lineage("with spaces/and-slashes");
-    expect(fetchFn.mock.calls[0]![0]).toBe("/audit/lineage/with%20spaces%2Fand-slashes");
+    expect(fetchFn.mock.calls[0]![0]).toBe("/api/v1/audit/lineage/with%20spaces%2Fand-slashes");
   });
 
   it("prefixes the configured baseUrl", async () => {
@@ -59,7 +59,7 @@ describe("AuditApi.lineage", () => {
     );
     const api = new AuditApi({ fetchFn, baseUrl: "http://audit.local" });
     await api.lineage(INCIDENT_ID);
-    expect(fetchFn.mock.calls[0]![0]).toBe(`http://audit.local/audit/lineage/${INCIDENT_ID}`);
+    expect(fetchFn.mock.calls[0]![0]).toBe(`http://audit.local/lineage/${INCIDENT_ID}`);
   });
 
   it("throws AuditApiError on non-2xx", async () => {

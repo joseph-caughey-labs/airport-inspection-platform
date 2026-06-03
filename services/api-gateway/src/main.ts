@@ -22,7 +22,18 @@ async function main(): Promise<void> {
     registry,
   });
 
-  const app = await buildApp({ logger, registry, securityEvents });
+  // Upstreams for the proxy routes that front audit-service +
+  // incident-service. Override via env in compose for dockerized
+  // deployments; the defaults match the compose hostnames.
+  const auditUpstream = process.env["AUDIT_SERVICE_URL"] ?? "http://audit-service:3007";
+  const incidentUpstream = process.env["INCIDENT_SERVICE_URL"] ?? "http://incident-service:3006";
+
+  const app = await buildApp({
+    logger,
+    registry,
+    securityEvents,
+    upstreams: { audit: auditUpstream, incident: incidentUpstream },
+  });
   const port = Number(process.env["PORT"] ?? 3001);
   await app.listen({ port, host: "0.0.0.0" });
   logger.info({ port }, "api-gateway ready");
