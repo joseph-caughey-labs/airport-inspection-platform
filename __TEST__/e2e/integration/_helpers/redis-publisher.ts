@@ -102,3 +102,44 @@ export function sensorFrameEnvelope(opts: {
     },
   };
 }
+
+/**
+ * AI detection envelope as the publish-side emits it. Mirrors the
+ * mocked tier's `aiDetection({...})` from `ws-fixture.ts` but in
+ * BRIDGE-side shape (top-level `event_type`, the bridge rewrites to
+ * message `type`).
+ *
+ * `confidence` is the CALIBRATED value the bridge passes through.
+ * The frontend decoder flags the alert with LOW CONF when this is
+ * below the threshold (~0.5), so pass < 0.5 to exercise the badge.
+ */
+export function aiDetectionEnvelope(opts: {
+  sensorId: string;
+  detectionId: string;
+  frameId: string;
+  detectionClass: "fod" | "crack" | "snowbank" | "wildlife" | "anomaly";
+  confidence: number;
+  severityHint: "critical" | "high" | "medium" | "low" | "info";
+  bbox?: { x: number; y: number; w: number; h: number };
+  capturedAt?: string;
+  eventId?: string;
+}): BroadcastEnvelope {
+  const captured = opts.capturedAt ?? new Date().toISOString();
+  return {
+    event_id: opts.eventId ?? randomUUID(),
+    event_type: `ai.detection.${opts.detectionClass}.emitted`,
+    schema_version: "v1",
+    timestamp: captured,
+    payload: {
+      detection_id: opts.detectionId,
+      sensor_id: opts.sensorId,
+      frame_id: opts.frameId,
+      detection_class: opts.detectionClass,
+      confidence: opts.confidence,
+      severity_hint: opts.severityHint,
+      ...(opts.bbox ? { bbox: opts.bbox } : {}),
+      captured_at: captured,
+      geo: { lat: 37.6213, lng: -122.379, alt_m: 4 },
+    },
+  };
+}
