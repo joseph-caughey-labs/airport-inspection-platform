@@ -22,6 +22,17 @@ async function main(): Promise<void> {
     registry,
   });
 
+  // Second Redis client, dedicated to the rate-limit store. Not
+  // sharing with `redisPub` because a single misbehaving connection
+  // would degrade BOTH the security audit + the rate-limit posture.
+  // `skipOnError` on the limiter falls back to "no rate limit" when
+  // this connection flaps; the security publisher's own swallow
+  // covers the other side.
+  const rateLimitRedis = createRedis({
+    host: process.env["REDIS_HOST"] ?? "redis",
+    port: Number(process.env["REDIS_PORT"] ?? 6379),
+  });
+
   // Upstreams for the proxy routes that front audit-service +
   // incident-service. Override via env in compose for dockerized
   // deployments; the defaults match the compose hostnames.
@@ -33,6 +44,7 @@ async function main(): Promise<void> {
     registry,
     securityEvents,
     upstreams: { audit: auditUpstream, incident: incidentUpstream },
+    rateLimitRedis,
   });
   const port = Number(process.env["PORT"] ?? 3001);
   await app.listen({ port, host: "0.0.0.0" });
@@ -42,6 +54,7 @@ async function main(): Promise<void> {
     logger.warn({ signal }, "shutting down");
     await app.close();
     redisPub.disconnect();
+    rateLimitRedis.disconnect();
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));
