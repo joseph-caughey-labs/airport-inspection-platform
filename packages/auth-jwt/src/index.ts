@@ -11,3 +11,7 @@ export {
   type VerifiedToken,
 } from "./jwt.js";
 export { verifyJwtHook, requireAuth, requireRole, type VerifyJwtHookOptions } from "./fastify.js";
+export {
+  InMemoryRefreshTokenRevocationList,
+  type RefreshTokenRevocationList,
+} from "./revocation.js";
