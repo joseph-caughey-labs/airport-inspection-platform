@@ -84,6 +84,18 @@ export class IncidentApi {
   }
 
   /**
+   * `GET /:id` — current incident envelope from incident-service.
+   * Used by the detail page header so the operator sees status,
+   * severity, assignee, etc. alongside the audit-driven timeline
+   * (which only carries transitions, not the envelope itself).
+   *
+   * Same auth + 401-retry-once posture as the POST methods.
+   */
+  async get(id: string): Promise<Incident> {
+    return this.send<Incident>(`/${id}`, "GET");
+  }
+
+  /**
    * `POST /:id/acknowledge` — transitions a new incident to
    * `acknowledged`. Throws `IncidentApiError` on 4xx with the canonical
    * code; the caller maps it to the operator-facing message.
@@ -122,25 +134,37 @@ export class IncidentApi {
     return this.post<Incident>(`/${id}/reject`, body);
   }
 
-  private async post<T>(path: string, body: unknown): Promise<T> {
-    const send = async (token: string | null): Promise<Response> => {
-      const headers: Record<string, string> = { "content-type": "application/json" };
+  private post<T>(path: string, body: unknown): Promise<T> {
+    return this.send<T>(path, "POST", body);
+  }
+
+  /**
+   * Shared fetch helper. Builds the bearer header from the
+   * tokenProvider, delegates to the configured fetchFn, and runs
+   * the canonical 401 → onUnauthorized → retry-once pattern. The
+   * POST methods + the new GET share this so the auth posture is
+   * identical no matter the method.
+   */
+  private async send<T>(path: string, method: "GET" | "POST", body?: unknown): Promise<T> {
+    const fire = async (token: string | null): Promise<Response> => {
+      const headers: Record<string, string> = {};
+      if (body !== undefined) headers["content-type"] = "application/json";
       if (token) headers["authorization"] = `Bearer ${token}`;
       return this.fetchFn(`${this.baseUrl}${path}`, {
-        method: "POST",
+        method,
         headers,
-        body: JSON.stringify(body),
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       });
     };
 
-    let res = await send(this.tokenProvider());
+    let res = await fire(this.tokenProvider());
     if (res.status === 401 && this.onUnauthorized) {
       // Lazy refresh: ask the auth store to swap the access token,
       // then retry exactly once. A second 401 falls through to the
       // caller — the global guard will then bounce to /login.
       const fresh = await this.onUnauthorized();
       if (fresh) {
-        res = await send(fresh);
+        res = await fire(fresh);
       }
     }
     if (!res.ok) {
