@@ -8,6 +8,7 @@ import {
 import { DEFAULT_BODY_LIMIT_BYTES, installHttpSafety } from "@aip/http-safety";
 import { correlationHook, type Logger } from "@aip/logger";
 import { installMetrics, type Registry } from "@aip/metrics";
+import { type RedisClient } from "@aip/redis-client";
 import {
   buildSecurityEvent,
   RecordingSecurityEventPublisher,
@@ -60,6 +61,15 @@ export interface BuildAppOptions {
     audit?: string;
     incident?: string;
   };
+  /**
+   * Optional Redis client for the rate-limit store. When provided,
+   * `@fastify/rate-limit` shares its count across api-gateway
+   * replicas + survives a restart (the in-process default loses
+   * state both ways). Should be a DEDICATED ioredis instance —
+   * sharing with the security-events publisher would mean one
+   * misbehaving connection can break both.
+   */
+  rateLimitRedis?: RedisClient;
 }
 
 const TEST_SECRET = "test-only-secret-do-not-use-in-prod-32-bytes-minimum-thanks";
@@ -78,6 +88,7 @@ export async function buildApp({
   rateLimitDisabled,
   securityEvents,
   upstreams,
+  rateLimitRedis,
 }: BuildAppOptions) {
   // Default to the in-memory recorder so tests don't need to opt
   // into emission. Production passes the Redis-backed publisher.
@@ -101,6 +112,15 @@ export async function buildApp({
     await app.register(rateLimit, {
       max: GLOBAL_MAX_PER_MINUTE,
       timeWindow: "1 minute",
+      // T-Phase6: Redis-backed store when wired (production), in-
+      // process Map otherwise (tests). The namespace keeps our keys
+      // separated from anything else writing into the same Redis.
+      // `skipOnError: true` means a Redis flap degrades to "no rate
+      // limit applied" rather than 500-ing every request — safer
+      // for the user-facing surface than fail-closed.
+      ...(rateLimitRedis ? { redis: rateLimitRedis } : {}),
+      nameSpace: "aip-rl:",
+      skipOnError: true,
       // Use the source IP. Behind a trusted proxy we'd switch to
       // `req.headers["x-forwarded-for"]` parsing, but the api-gateway
       // sits behind NGINX which sets `X-Real-IP`; Fastify's default
