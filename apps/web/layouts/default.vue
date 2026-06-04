@@ -10,7 +10,10 @@ const { role, user, isAuthenticated } = storeToRefs(auth);
 const router = useRouter();
 
 async function onLogout(): Promise<void> {
-  auth.logout();
+  // Notify the server so it revokes the refresh token + audit-
+  // service captures the `auth.logout` event. Always falls through
+  // to the local clear even on a network failure.
+  await auth.logoutAndNotifyServer();
   await router.push("/login");
 }
 </script>

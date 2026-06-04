@@ -1,9 +1,11 @@
 import {
   createJwtSigner,
+  InMemoryRefreshTokenRevocationList,
   requireAuth,
   requireRole,
   verifyJwtHook,
   type JwtSigner,
+  type RefreshTokenRevocationList,
 } from "@aip/auth-jwt";
 import { DEFAULT_BODY_LIMIT_BYTES, installHttpSafety } from "@aip/http-safety";
 import { correlationHook, type Logger } from "@aip/logger";
@@ -70,6 +72,14 @@ export interface BuildAppOptions {
    * misbehaving connection can break both.
    */
   rateLimitRedis?: RedisClient;
+  /**
+   * Refresh-token revocation list (Phase 6 follow-up). The
+   * `/auth/logout` route adds tokens here; `/auth/refresh` checks
+   * before reissuing. Defaults to a per-process in-memory Set;
+   * tests inject one to assert on revocation, production swaps in
+   * a Redis-backed one when single-instance becomes a problem.
+   */
+  revocationList?: RefreshTokenRevocationList;
 }
 
 const TEST_SECRET = "test-only-secret-do-not-use-in-prod-32-bytes-minimum-thanks";
@@ -89,6 +99,7 @@ export async function buildApp({
   securityEvents,
   upstreams,
   rateLimitRedis,
+  revocationList,
 }: BuildAppOptions) {
   // Default to the in-memory recorder so tests don't need to opt
   // into emission. Production passes the Redis-backed publisher.
@@ -207,12 +218,17 @@ export async function buildApp({
   app.get("/health", async () => ({ status: "ok" }));
   app.get("/ready", async () => ({ status: "ready" }));
 
-  // ── Auth (T-504) ─────────────────────────────────────────────────
+  // ── Auth (T-504, logout follow-up in Phase 6) ────────────────────
+  // Default to an in-memory revocation list — single-instance, lost
+  // on restart, fine for the demo. Production passes a Redis-backed
+  // one when the api-gateway scales horizontally.
+  const refreshRevocation = revocationList ?? new InMemoryRefreshTokenRevocationList();
   registerAuthRoutes(app, {
     signer: jwtSigner,
     directory: userDirectory,
     authMaxPerMinute: AUTH_MAX_PER_MINUTE,
     securityEvents: events,
+    revocationList: refreshRevocation,
   });
 
   // ── API routes ───────────────────────────────────────────────────

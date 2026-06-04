@@ -122,6 +122,27 @@ async function postRefresh(deps: AuthApiDeps, refreshToken: string): Promise<Ref
   return (await res.json()) as RefreshResponse;
 }
 
+/**
+ * Fire-and-forget logout call. Server invalidates the refresh
+ * token + audits the `auth.logout` event; the result doesn't
+ * change the local-clear behaviour either way, so we never throw.
+ * A network failure here just means the server never sees the
+ * logout; the local session still ends.
+ */
+async function postLogout(deps: AuthApiDeps, refreshToken: string): Promise<void> {
+  const fetchFn = deps.fetchFn ?? globalThis.fetch.bind(globalThis);
+  const base = deps.baseUrl ?? "/api/v1";
+  try {
+    await fetchFn(`${base}/auth/logout`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+  } catch {
+    // Swallow — local logout proceeds regardless.
+  }
+}
+
 async function safeJson(res: Response): Promise<unknown> {
   try {
     return await res.json();
@@ -205,12 +226,35 @@ export const useAuthStore = defineStore("auth", {
       }
     },
 
+    /**
+     * Local logout — clears in-memory + localStorage state.
+     * Called by the refresh path on a fatal failure (no point
+     * pinging the server about a token it's already rejecting)
+     * and by `logoutAndNotifyServer` after the audit-emit fires.
+     */
     logout(): void {
       this.accessToken = null;
       this.refreshToken = null;
       this.user = null;
       this.error = null;
       writeStored(null);
+    },
+
+    /**
+     * User-initiated logout. Posts the refresh token to
+     * `/api/v1/auth/logout` first so audit-service hash-chains an
+     * `auth.logout` security event and the token enters the
+     * server-side revocation list. Then clears local state.
+     *
+     * Fire-and-forget on the network — a server hiccup must
+     * never block the user from signing out locally.
+     */
+    async logoutAndNotifyServer(deps: AuthApiDeps = {}): Promise<void> {
+      const token = this.refreshToken;
+      if (token) {
+        await postLogout(deps, token);
+      }
+      this.logout();
     },
 
     /**
