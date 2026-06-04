@@ -42,7 +42,7 @@ export default defineNuxtConfig({
 
   vite: {
     define: {
-      __APP_VERSION__: JSON.stringify("0.5.0"),
+      __APP_VERSION__: JSON.stringify("0.6.0"),
     },
   },
 });
