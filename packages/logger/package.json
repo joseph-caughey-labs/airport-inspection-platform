@@ -1,6 +1,6 @@
 {
   "name": "@aip/logger",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Structured logging for every Node/TS service. Pino under the hood, with AsyncLocalStorage-driven request/correlation id propagation and a safe-by-default redaction list.",
   "license": "SEE LICENSE IN ../../LICENSE",
