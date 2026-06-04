@@ -16,6 +16,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    # `actions: write` is required for the GitHub Actions cache
+    # backend (`type=gha`) that buildx writes to. The default token
+    # only has `actions: read`; without the bump cache writes silently
+    # no-op (cache hits but never warms).
+    permissions:
+      contents: read
+      actions: write
+
     env:
       CI: "true"
       # Shared across all services + the test harness so JWTs verify.
@@ -48,10 +56,29 @@ jobs:
       - name: Install Playwright browsers (chromium only)
         run: pnpm e2e:install
 
-      # Build images in parallel so the slow part overlaps with
-      # postgres/redis coming up.
-      - name: Build docker images
-        run: docker compose build --parallel
+      # Build images with buildx + GitHub Actions cache so re-runs
+      # reuse layers from the previous run's `cache-to`. First-run
+      # cost is the same as `docker compose build --parallel`;
+      # subsequent runs skip the pnpm-install + npm-fetch layers
+      # that dominate the build.
+      - name: Set up Docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build docker images (with GHA cache)
+        uses: docker/bake-action@v5
+        with:
+          files: docker-compose.yml
+          # `load: true` writes images into the local docker daemon so
+          # `docker compose up` finds them by tag (compose's default
+          # `<project>_<service>` naming matches what bake produces).
+          load: true
+          # Wildcard `*.cache-from / cache-to` applies the same GHA
+          # cache config to every service target in the compose file.
+          # `mode=max` writes intermediate layers too — costs cache
+          # storage but is what makes subsequent builds fast.
+          set: |
+            *.cache-from=type=gha,scope=integration
+            *.cache-to=type=gha,mode=max,scope=integration
 
       - name: Start data plane (postgres + redis)
         run: docker compose up -d postgres redis

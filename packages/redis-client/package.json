@@ -1,6 +1,6 @@
 {
   "name": "@aip/redis-client",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Redis client wrapper — ioredis with safe defaults, exponential-backoff reconnect, a strict channel-naming convention, and a health probe.",
   "license": "SEE LICENSE IN ../../LICENSE",

@@ -31,13 +31,13 @@ describe("IncidentApi.acknowledge — happy path", () => {
     fetchFn = vi.fn();
   });
 
-  it("POSTs the canonical body to /incidents/:id/acknowledge", async () => {
+  it("POSTs the canonical body to /api/v1/incidents/:id/acknowledge (default api-gateway base)", async () => {
     fetchFn.mockResolvedValue(jsonResponse(200, STORED_INCIDENT));
     const api = new IncidentApi({ fetchFn });
     await api.acknowledge(INCIDENT_ID, { operator_id: OPERATOR });
     expect(fetchFn).toHaveBeenCalledOnce();
     const [url, init] = fetchFn.mock.calls[0]!;
-    expect(url).toBe(`/incidents/${INCIDENT_ID}/acknowledge`);
+    expect(url).toBe(`/api/v1/incidents/${INCIDENT_ID}/acknowledge`);
     expect(init.method).toBe("POST");
     expect(init.headers).toEqual({ "content-type": "application/json" });
     expect(JSON.parse(init.body)).toEqual({ operator_id: OPERATOR });
@@ -66,9 +66,7 @@ describe("IncidentApi.acknowledge — happy path", () => {
     fetchFn.mockResolvedValue(jsonResponse(200, STORED_INCIDENT));
     const api = new IncidentApi({ fetchFn, baseUrl: "http://api.example" });
     await api.acknowledge(INCIDENT_ID, { operator_id: OPERATOR });
-    expect(fetchFn.mock.calls[0]![0]).toBe(
-      `http://api.example/incidents/${INCIDENT_ID}/acknowledge`,
-    );
+    expect(fetchFn.mock.calls[0]![0]).toBe(`http://api.example/${INCIDENT_ID}/acknowledge`);
   });
 });
 
@@ -93,7 +91,7 @@ describe("IncidentApi — other transitions (T-404)", () => {
       assignee_id: OPERATOR,
     });
     const [url, init] = fetchFn.mock.calls[0]!;
-    expect(url).toBe(`/incidents/${INCIDENT_ID}/assign`);
+    expect(url).toBe(`/api/v1/incidents/${INCIDENT_ID}/assign`);
     expect(JSON.parse(init.body)).toEqual({ operator_id: OPERATOR, assignee_id: OPERATOR });
     expect(result.status).toBe("assigned");
   });
@@ -102,7 +100,7 @@ describe("IncidentApi — other transitions (T-404)", () => {
     fetchFn.mockResolvedValue(jsonResponse(200, { ...STORED_INCIDENT, status: "in_progress" }));
     const api = new IncidentApi({ fetchFn });
     await api.startProgress(INCIDENT_ID, { operator_id: OPERATOR });
-    expect(fetchFn.mock.calls[0]![0]).toBe(`/incidents/${INCIDENT_ID}/start_progress`);
+    expect(fetchFn.mock.calls[0]![0]).toBe(`/api/v1/incidents/${INCIDENT_ID}/start_progress`);
   });
 
   it("resolve POSTs to /resolve with resolution_summary", async () => {
@@ -131,7 +129,7 @@ describe("IncidentApi — other transitions (T-404)", () => {
     fetchFn.mockResolvedValue(jsonResponse(200, { ...STORED_INCIDENT, status: "archived" }));
     const api = new IncidentApi({ fetchFn });
     const result = await api.archive(INCIDENT_ID, { operator_id: OPERATOR });
-    expect(fetchFn.mock.calls[0]![0]).toBe(`/incidents/${INCIDENT_ID}/archive`);
+    expect(fetchFn.mock.calls[0]![0]).toBe(`/api/v1/incidents/${INCIDENT_ID}/archive`);
     expect(result.status).toBe("archived");
   });
 
@@ -139,7 +137,7 @@ describe("IncidentApi — other transitions (T-404)", () => {
     fetchFn.mockResolvedValue(jsonResponse(200, { ...STORED_INCIDENT, status: "rejected" }));
     const api = new IncidentApi({ fetchFn });
     await api.reject(INCIDENT_ID, { operator_id: OPERATOR, reason: "duplicate" });
-    expect(fetchFn.mock.calls[0]![0]).toBe(`/incidents/${INCIDENT_ID}/reject`);
+    expect(fetchFn.mock.calls[0]![0]).toBe(`/api/v1/incidents/${INCIDENT_ID}/reject`);
     expect(JSON.parse(fetchFn.mock.calls[0]![1].body)).toEqual({
       operator_id: OPERATOR,
       reason: "duplicate",
@@ -216,5 +214,59 @@ describe("IncidentApi.acknowledge — error paths", () => {
       expect((err as IncidentApiError).code).toBe("INCIDENT_NOT_FOUND");
       expect((err as IncidentApiError).status).toBe(404);
     }
+  });
+});
+
+describe("IncidentApi.get — detail page read", () => {
+  let fetchFn: ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    fetchFn = vi.fn();
+  });
+
+  it("GETs /api/v1/incidents/:id (default api-gateway base) without a body", async () => {
+    fetchFn.mockResolvedValue(jsonResponse(200, STORED_INCIDENT));
+    const api = new IncidentApi({ fetchFn });
+    const result = await api.get(INCIDENT_ID);
+    expect(fetchFn).toHaveBeenCalledOnce();
+    const [url, init] = fetchFn.mock.calls[0]!;
+    expect(url).toBe(`/api/v1/incidents/${INCIDENT_ID}`);
+    expect(init.method).toBe("GET");
+    expect(init.body).toBeUndefined();
+    expect(init.headers).not.toHaveProperty("content-type");
+    expect(result.id).toBe(INCIDENT_ID);
+    expect(result.status).toBe("acknowledged");
+  });
+
+  it("attaches Bearer when the tokenProvider returns a string", async () => {
+    fetchFn.mockResolvedValue(jsonResponse(200, STORED_INCIDENT));
+    const api = new IncidentApi({ fetchFn, tokenProvider: () => "access-1" });
+    await api.get(INCIDENT_ID);
+    expect(fetchFn.mock.calls[0]![1].headers).toMatchObject({
+      authorization: "Bearer access-1",
+    });
+  });
+
+  it("retries once on 401 with the fresh token from onUnauthorized", async () => {
+    fetchFn
+      .mockResolvedValueOnce(jsonResponse(401, { error: { code: "unauthorized", message: "x" } }))
+      .mockResolvedValueOnce(jsonResponse(200, STORED_INCIDENT));
+    const onUnauthorized = vi.fn().mockResolvedValue("access-2");
+    const api = new IncidentApi({
+      fetchFn,
+      tokenProvider: () => "access-1",
+      onUnauthorized,
+    });
+    const result = await api.get(INCIDENT_ID);
+    expect(result.id).toBe(INCIDENT_ID);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(fetchFn.mock.calls[1]![1].headers.authorization).toBe("Bearer access-2");
+  });
+
+  it("throws IncidentApiError on 404 with INCIDENT_NOT_FOUND", async () => {
+    fetchFn.mockResolvedValue(
+      jsonResponse(404, { error: { code: "INCIDENT_NOT_FOUND", message: "missing" } }),
+    );
+    const api = new IncidentApi({ fetchFn });
+    await expect(api.get(INCIDENT_ID)).rejects.toBeInstanceOf(IncidentApiError);
   });
 });

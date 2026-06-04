@@ -147,6 +147,50 @@ describe("useAuthStore.logout", () => {
   });
 });
 
+describe("useAuthStore.logoutAndNotifyServer", () => {
+  it("POSTs the refresh token to /api/v1/auth/logout then clears state", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, LOGIN_OK))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const auth = useAuthStore();
+    await auth.login("pat.operator@airport-ops.test", { fetchFn });
+
+    await auth.logoutAndNotifyServer({ fetchFn });
+
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    const [url, init] = fetchFn.mock.calls[1]!;
+    expect(url).toBe("/api/v1/auth/logout");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ refresh_token: "refresh-token-1" });
+
+    expect(auth.isAuthenticated).toBe(false);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("still clears local state when the server request fails", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, LOGIN_OK))
+      .mockRejectedValueOnce(new Error("network down"));
+    const auth = useAuthStore();
+    await auth.login("pat.operator@airport-ops.test", { fetchFn });
+
+    // Must NOT throw — network failure isn't a reason to keep the
+    // user signed in locally.
+    await expect(auth.logoutAndNotifyServer({ fetchFn })).resolves.toBeUndefined();
+    expect(auth.isAuthenticated).toBe(false);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("skips the network call when there's no refresh token (already signed out)", async () => {
+    const fetchFn = vi.fn();
+    const auth = useAuthStore();
+    await auth.logoutAndNotifyServer({ fetchFn });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+});
+
 describe("useAuthStore.restoreFromStorage", () => {
   it("rehydrates state from a previously-persisted login", () => {
     window.localStorage.setItem(

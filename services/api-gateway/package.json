@@ -1,6 +1,6 @@
 {
   "name": "@aip/api-gateway",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Public REST entry point. Fastify shell with request-id propagation, canonical error envelope, auth decode stub, rate-limit hook, and /metrics. Real auth + RBAC enforcement lands in T-504; real rate limiting in T-505.",
   "license": "SEE LICENSE IN ../../LICENSE",
@@ -22,6 +22,7 @@
     "@aip/redis-client": "workspace:*",
     "@aip/security-events": "workspace:*",
     "@aip/shared-contracts": "workspace:*",
+    "@fastify/http-proxy": "^10.0.0",
     "@fastify/rate-limit": "^10.0.0",
     "fastify": "^5.0.0",
     "ioredis": "^5.4.1",

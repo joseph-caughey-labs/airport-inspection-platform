@@ -22,7 +22,7 @@
  * directory without touching this file.
  */
 import { Role, type Role as RoleType } from "@aip/shared-contracts";
-import type { JwtSigner } from "@aip/auth-jwt";
+import type { JwtSigner, RefreshTokenRevocationList } from "@aip/auth-jwt";
 import { AuthJwtError } from "@aip/auth-jwt";
 import {
   buildSecurityEvent,
@@ -61,6 +61,14 @@ export interface RegisterAuthRoutesOptions {
    * Tests can drop in a recording publisher.
    */
   securityEvents: SecurityEventPublisher;
+  /**
+   * Refresh-token revocation list (Phase 6 follow-up). `POST /auth/logout`
+   * adds the user's refresh token here; `POST /auth/refresh` rejects
+   * any token already in the set. Required because a signed JWT can't
+   * be cryptographically invalidated once issued — this is the
+   * out-of-band gate that closes the session.
+   */
+  revocationList: RefreshTokenRevocationList;
 }
 
 const LoginBody = z.object({
@@ -143,6 +151,17 @@ export function registerAuthRoutes(app: FastifyInstance, opts: RegisterAuthRoute
     }
     try {
       const verified = await opts.signer.verifyRefresh(parsed.data.refresh_token);
+      // Revocation gate. Check AFTER cryptographic verification so
+      // a malformed token still surfaces as `invalid_token` rather
+      // than `revoked` (no information disclosure about which
+      // tokens we used to recognize).
+      if (await opts.revocationList.isRevoked(parsed.data.refresh_token)) {
+        emitAuthEvent(req, "auth.refresh.failed", verified.user_id, {
+          ip: req.ip,
+          reason: "revoked",
+        });
+        return reply.code(401).send(errorEnvelope("unauthorized", "refresh token revoked"));
+      }
       const user = await opts.directory.findById(verified.user_id);
       if (!user) {
         // The refresh token referenced a user that no longer
@@ -165,6 +184,38 @@ export function registerAuthRoutes(app: FastifyInstance, opts: RegisterAuthRoute
           ip: req.ip,
           reason: err.code,
         });
+        return reply.code(401).send(errorEnvelope("unauthorized", err.message, { code: err.code }));
+      }
+      throw err;
+    }
+  });
+
+  // Logout: revoke the refresh token and emit an `auth.logout`
+  // security event so the audit chain captures the session close.
+  //
+  // The frontend's `useAuthStore.logout()` calls this before
+  // clearing localStorage; the response code isn't load-bearing for
+  // the user (their local session is gone either way), but a 401 on
+  // a missing/malformed token is the honest signal that we didn't
+  // revoke anything. 204 on success keeps the body empty.
+  //
+  // Idempotent: re-revoking an already-revoked token still returns
+  // 204 because the Set semantics already are.
+  app.post("/api/v1/auth/logout", { config: authRateLimit }, async (req, reply) => {
+    const parsed = RefreshBody.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send(errorEnvelope("validation_failed", "invalid logout body"));
+    }
+    try {
+      const verified = await opts.signer.verifyRefresh(parsed.data.refresh_token);
+      await opts.revocationList.revoke(parsed.data.refresh_token);
+      emitAuthEvent(req, "auth.logout", verified.user_id, { ip: req.ip });
+      return reply.code(204).send();
+    } catch (err) {
+      if (err instanceof AuthJwtError) {
+        // Don't emit an `auth.logout` event for a malformed token —
+        // we don't know whose session this was, and emitting a
+        // `null` actor would muddy the audit chain.
         return reply.code(401).send(errorEnvelope("unauthorized", err.message, { code: err.code }));
       }
       throw err;

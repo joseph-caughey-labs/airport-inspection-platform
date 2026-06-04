@@ -22,7 +22,30 @@ async function main(): Promise<void> {
     registry,
   });
 
-  const app = await buildApp({ logger, registry, securityEvents });
+  // Second Redis client, dedicated to the rate-limit store. Not
+  // sharing with `redisPub` because a single misbehaving connection
+  // would degrade BOTH the security audit + the rate-limit posture.
+  // `skipOnError` on the limiter falls back to "no rate limit" when
+  // this connection flaps; the security publisher's own swallow
+  // covers the other side.
+  const rateLimitRedis = createRedis({
+    host: process.env["REDIS_HOST"] ?? "redis",
+    port: Number(process.env["REDIS_PORT"] ?? 6379),
+  });
+
+  // Upstreams for the proxy routes that front audit-service +
+  // incident-service. Override via env in compose for dockerized
+  // deployments; the defaults match the compose hostnames.
+  const auditUpstream = process.env["AUDIT_SERVICE_URL"] ?? "http://audit-service:3007";
+  const incidentUpstream = process.env["INCIDENT_SERVICE_URL"] ?? "http://incident-service:3006";
+
+  const app = await buildApp({
+    logger,
+    registry,
+    securityEvents,
+    upstreams: { audit: auditUpstream, incident: incidentUpstream },
+    rateLimitRedis,
+  });
   const port = Number(process.env["PORT"] ?? 3001);
   await app.listen({ port, host: "0.0.0.0" });
   logger.info({ port }, "api-gateway ready");
@@ -31,6 +54,7 @@ async function main(): Promise<void> {
     logger.warn({ signal }, "shutting down");
     await app.close();
     redisPub.disconnect();
+    rateLimitRedis.disconnect();
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));

@@ -1,18 +1,22 @@
 import {
   createJwtSigner,
+  InMemoryRefreshTokenRevocationList,
   requireAuth,
   requireRole,
   verifyJwtHook,
   type JwtSigner,
+  type RefreshTokenRevocationList,
 } from "@aip/auth-jwt";
 import { DEFAULT_BODY_LIMIT_BYTES, installHttpSafety } from "@aip/http-safety";
 import { correlationHook, type Logger } from "@aip/logger";
 import { installMetrics, type Registry } from "@aip/metrics";
+import { type RedisClient } from "@aip/redis-client";
 import {
   buildSecurityEvent,
   RecordingSecurityEventPublisher,
   type SecurityEventPublisher,
 } from "@aip/security-events";
+import httpProxy from "@fastify/http-proxy";
 import rateLimit from "@fastify/rate-limit";
 import Fastify from "fastify";
 import { createInMemoryDirectory } from "./auth/directory.js";
@@ -48,6 +52,34 @@ export interface BuildAppOptions {
    * a live Redis.
    */
   securityEvents?: SecurityEventPublisher;
+  /**
+   * Upstream URLs for the proxy routes that front audit-service
+   * + incident-service (T-507 follow-up). Tests pass empty strings
+   * to skip the proxy registration (the routes don't need to exist
+   * for unit tests that don't exercise them). Production reads
+   * `AUDIT_SERVICE_URL` / `INCIDENT_SERVICE_URL` from main.ts.
+   */
+  upstreams?: {
+    audit?: string;
+    incident?: string;
+  };
+  /**
+   * Optional Redis client for the rate-limit store. When provided,
+   * `@fastify/rate-limit` shares its count across api-gateway
+   * replicas + survives a restart (the in-process default loses
+   * state both ways). Should be a DEDICATED ioredis instance —
+   * sharing with the security-events publisher would mean one
+   * misbehaving connection can break both.
+   */
+  rateLimitRedis?: RedisClient;
+  /**
+   * Refresh-token revocation list (Phase 6 follow-up). The
+   * `/auth/logout` route adds tokens here; `/auth/refresh` checks
+   * before reissuing. Defaults to a per-process in-memory Set;
+   * tests inject one to assert on revocation, production swaps in
+   * a Redis-backed one when single-instance becomes a problem.
+   */
+  revocationList?: RefreshTokenRevocationList;
 }
 
 const TEST_SECRET = "test-only-secret-do-not-use-in-prod-32-bytes-minimum-thanks";
@@ -65,6 +97,9 @@ export async function buildApp({
   directory,
   rateLimitDisabled,
   securityEvents,
+  upstreams,
+  rateLimitRedis,
+  revocationList,
 }: BuildAppOptions) {
   // Default to the in-memory recorder so tests don't need to opt
   // into emission. Production passes the Redis-backed publisher.
@@ -88,6 +123,15 @@ export async function buildApp({
     await app.register(rateLimit, {
       max: GLOBAL_MAX_PER_MINUTE,
       timeWindow: "1 minute",
+      // T-Phase6: Redis-backed store when wired (production), in-
+      // process Map otherwise (tests). The namespace keeps our keys
+      // separated from anything else writing into the same Redis.
+      // `skipOnError: true` means a Redis flap degrades to "no rate
+      // limit applied" rather than 500-ing every request — safer
+      // for the user-facing surface than fail-closed.
+      ...(rateLimitRedis ? { redis: rateLimitRedis } : {}),
+      nameSpace: "aip-rl:",
+      skipOnError: true,
       // Use the source IP. Behind a trusted proxy we'd switch to
       // `req.headers["x-forwarded-for"]` parsing, but the api-gateway
       // sits behind NGINX which sets `X-Real-IP`; Fastify's default
@@ -174,12 +218,17 @@ export async function buildApp({
   app.get("/health", async () => ({ status: "ok" }));
   app.get("/ready", async () => ({ status: "ready" }));
 
-  // ── Auth (T-504) ─────────────────────────────────────────────────
+  // ── Auth (T-504, logout follow-up in Phase 6) ────────────────────
+  // Default to an in-memory revocation list — single-instance, lost
+  // on restart, fine for the demo. Production passes a Redis-backed
+  // one when the api-gateway scales horizontally.
+  const refreshRevocation = revocationList ?? new InMemoryRefreshTokenRevocationList();
   registerAuthRoutes(app, {
     signer: jwtSigner,
     directory: userDirectory,
     authMaxPerMinute: AUTH_MAX_PER_MINUTE,
     securityEvents: events,
+    revocationList: refreshRevocation,
   });
 
   // ── API routes ───────────────────────────────────────────────────
@@ -195,6 +244,35 @@ export async function buildApp({
   app.get("/api/v1/admin/echo", { preHandler: requireRole("admin") }, async (req) => ({
     admin: req.auth!.user_id,
   }));
+
+  // ── Reverse-proxy: backend services behind /api/v1 ──────────────
+  // Front audit-service + incident-service through api-gateway so
+  // the public surface is one host with one auth point, one
+  // rate-limit budget, one error envelope. Tests that skip these
+  // upstreams (pass empty strings or omit) get a 404 from the
+  // safeNotFoundHandler when something tries to hit them — which
+  // is fine because those unit tests don't proxy.
+  //
+  // The downstream services still verify the Bearer token + run
+  // their own `requireRole` preHandlers; api-gateway forwards the
+  // Authorization header unchanged. No security gap, no double-
+  // verify cost beyond the JWT parse.
+  if (upstreams?.audit) {
+    await app.register(httpProxy, {
+      upstream: upstreams.audit,
+      prefix: "/api/v1/audit",
+      rewritePrefix: "/audit",
+      http2: false,
+    });
+  }
+  if (upstreams?.incident) {
+    await app.register(httpProxy, {
+      upstream: upstreams.incident,
+      prefix: "/api/v1/incidents",
+      rewritePrefix: "/incidents",
+      http2: false,
+    });
+  }
 
   return app;
 }

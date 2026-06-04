@@ -44,7 +44,14 @@ export class IncidentApiError extends Error {
 export interface IncidentApiOptions {
   /** Override fetch (tests inject a mock). */
   fetchFn?: typeof fetch;
-  /** Base URL for the incident-service. Empty string uses same-origin. */
+  /**
+   * Base URL for incident writes. Default `/api/v1/incidents` —
+   * the api-gateway's reverse-proxy prefix in front of
+   * incident-service. Empty string would address incident-service
+   * directly (e.g. via an older nginx route); the default routes
+   * through api-gateway so the auth + rate-limit posture stays
+   * uniform with the rest of the public surface.
+   */
   baseUrl?: string;
   /**
    * Returns the current access token (or null when unauthenticated).
@@ -71,69 +78,93 @@ export class IncidentApi {
     // Bind fetch to globalThis so the standard fetch isn't called as a
     // method of `IncidentApi` (which would lose its receiver).
     this.fetchFn = opts.fetchFn ?? globalThis.fetch.bind(globalThis);
-    this.baseUrl = opts.baseUrl ?? "";
+    this.baseUrl = opts.baseUrl ?? "/api/v1/incidents";
     this.tokenProvider = opts.tokenProvider ?? (() => null);
     this.onUnauthorized = opts.onUnauthorized;
   }
 
   /**
-   * POST /incidents/:id/acknowledge — transitions a new incident to
+   * `GET /:id` — current incident envelope from incident-service.
+   * Used by the detail page header so the operator sees status,
+   * severity, assignee, etc. alongside the audit-driven timeline
+   * (which only carries transitions, not the envelope itself).
+   *
+   * Same auth + 401-retry-once posture as the POST methods.
+   */
+  async get(id: string): Promise<Incident> {
+    return this.send<Incident>(`/${id}`, "GET");
+  }
+
+  /**
+   * `POST /:id/acknowledge` — transitions a new incident to
    * `acknowledged`. Throws `IncidentApiError` on 4xx with the canonical
    * code; the caller maps it to the operator-facing message.
    */
   async acknowledge(id: string, body: AcknowledgeIncidentRequest): Promise<Incident> {
-    return this.post<Incident>(`/incidents/${id}/acknowledge`, body);
+    return this.post<Incident>(`/${id}/acknowledge`, body);
   }
 
-  /** POST /incidents/:id/assign — `acknowledged` → `assigned`. */
+  /** `POST /:id/assign` — `acknowledged` → `assigned`. */
   async assign(id: string, body: AssignIncidentRequest): Promise<Incident> {
-    return this.post<Incident>(`/incidents/${id}/assign`, body);
+    return this.post<Incident>(`/${id}/assign`, body);
   }
 
-  /** POST /incidents/:id/start_progress — `assigned` → `in_progress`. */
+  /** `POST /:id/start_progress` — `assigned` → `in_progress`. */
   async startProgress(id: string, body: StartProgressIncidentRequest): Promise<Incident> {
-    return this.post<Incident>(`/incidents/${id}/start_progress`, body);
+    return this.post<Incident>(`/${id}/start_progress`, body);
   }
 
-  /** POST /incidents/:id/resolve — `in_progress` (or `escalated`) → `resolved`. */
+  /** `POST /:id/resolve` — `in_progress` (or `escalated`) → `resolved`. */
   async resolve(id: string, body: ResolveIncidentRequest): Promise<Incident> {
-    return this.post<Incident>(`/incidents/${id}/resolve`, body);
+    return this.post<Incident>(`/${id}/resolve`, body);
   }
 
-  /** POST /incidents/:id/escalate — any active state → `escalated`. */
+  /** `POST /:id/escalate` — any active state → `escalated`. */
   async escalate(id: string, body: EscalateIncidentRequest): Promise<Incident> {
-    return this.post<Incident>(`/incidents/${id}/escalate`, body);
+    return this.post<Incident>(`/${id}/escalate`, body);
   }
 
-  /** POST /incidents/:id/archive — `resolved` → `archived` (terminal). */
+  /** `POST /:id/archive` — `resolved` → `archived` (terminal). */
   async archive(id: string, body: ArchiveIncidentRequest): Promise<Incident> {
-    return this.post<Incident>(`/incidents/${id}/archive`, body);
+    return this.post<Incident>(`/${id}/archive`, body);
   }
 
-  /** POST /incidents/:id/reject — any non-terminal → `rejected` (terminal). */
+  /** `POST /:id/reject` — any non-terminal → `rejected` (terminal). */
   async reject(id: string, body: RejectIncidentRequest): Promise<Incident> {
-    return this.post<Incident>(`/incidents/${id}/reject`, body);
+    return this.post<Incident>(`/${id}/reject`, body);
   }
 
-  private async post<T>(path: string, body: unknown): Promise<T> {
-    const send = async (token: string | null): Promise<Response> => {
-      const headers: Record<string, string> = { "content-type": "application/json" };
+  private post<T>(path: string, body: unknown): Promise<T> {
+    return this.send<T>(path, "POST", body);
+  }
+
+  /**
+   * Shared fetch helper. Builds the bearer header from the
+   * tokenProvider, delegates to the configured fetchFn, and runs
+   * the canonical 401 → onUnauthorized → retry-once pattern. The
+   * POST methods + the new GET share this so the auth posture is
+   * identical no matter the method.
+   */
+  private async send<T>(path: string, method: "GET" | "POST", body?: unknown): Promise<T> {
+    const fire = async (token: string | null): Promise<Response> => {
+      const headers: Record<string, string> = {};
+      if (body !== undefined) headers["content-type"] = "application/json";
       if (token) headers["authorization"] = `Bearer ${token}`;
       return this.fetchFn(`${this.baseUrl}${path}`, {
-        method: "POST",
+        method,
         headers,
-        body: JSON.stringify(body),
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       });
     };
 
-    let res = await send(this.tokenProvider());
+    let res = await fire(this.tokenProvider());
     if (res.status === 401 && this.onUnauthorized) {
       // Lazy refresh: ask the auth store to swap the access token,
       // then retry exactly once. A second 401 falls through to the
       // caller — the global guard will then bounce to /login.
       const fresh = await this.onUnauthorized();
       if (fresh) {
-        res = await send(fresh);
+        res = await fire(fresh);
       }
     }
     if (!res.ok) {
