@@ -1,6 +1,6 @@
 {
   "name": "@aip/http-client",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Service-to-service HTTP client — Node's native fetch with timeouts, exponential-backoff retries on retryable failures, a configurable circuit breaker, and sanitized errors.",
   "license": "SEE LICENSE IN ../../LICENSE",

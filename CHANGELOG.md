@@ -2,6 +2,36 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-06-04
+
+**Phase 6 — Real-stack coverage + public-surface consolidation.** The mocked Playwright tier proved frontend behaviour; this phase builds the parallel tier that proves wire behaviour against the live `docker-compose` stack. The same scenarios (sensor outage, weather-degraded LOW CONF, FOD-on-runway full operator workflow) now run twice — fast against `routeWebSocket`, slow against compose — and the slow tier surfaced two real production wiring gaps in incident-service that the fast tier could never have caught. The public REST surface consolidated behind api-gateway proper (no more nginx-direct shortcuts), the rate-limit store moved from in-process to Redis with `skipOnError` graceful degradation, `auth.logout` joined the security-event taxonomy with a refresh-token revocation list backing it, and the incident-detail page finally renders the current envelope alongside the audit-driven timeline.
+
+### Added
+
+#### Dockerized integration tier
+
+- **CI docker layer cache** (#162) — replaces `docker compose build --parallel` with `docker/bake-action@v5` + GitHub Actions cache (`type=gha,mode=max,scope=integration`). First run pays the same cost; subsequent runs reuse the pnpm-install + npm-fetch layers that dominate the build. `actions: write` permission bump because GHA cache needs it to actually warm the cache.
+- **Scenario 04 (sensor outage) → integration tier** (#163) — sibling spec to the mocked tier publishes sensor frames to compose Redis on `events.broadcast.<airport_id>`; the real `RedisBridge` fans them to the browser via the WS pipeline through nginx. New `__TEST__/e2e/integration/_helpers/redis-publisher.ts` wraps ioredis with `publishToAirport()` + envelope builders.
+- **Scenario 06 (weather-degraded LOW CONF) → integration tier** (#164) — same shape; AI detection envelopes flow through compose Redis to verify the LOW CONF indicator renders against the real calibration path.
+- **Scenario 07 (FOD full operator workflow) → integration tier** (#165) — the **capstone**: real `POST /incidents` → real transitions via REST → real audit-service hash-chain INSERTs → `expect.poll` until the audit chain catches up → real timeline page renders the lineage with no `page.route` intercept. nginx grows `/audit/` and `/incidents` proxy locations (path-collision workaround for `/incidents/:id` page navigation).
+
+#### Public surface
+
+- **api-gateway fronts audit-service + incident-service** (#166) — `@fastify/http-proxy` registered at `/api/v1/audit` → `audit-service:3007/audit` and `/api/v1/incidents` → `incident-service:3006/incidents`. Drops the nginx-direct `/audit/` + `/incidents` workaround. **One auth point, one rate-limit budget, one error envelope** — the public surface posture the rest of the platform expected. Frontend `AuditApi` + `IncidentApi` default `baseUrl` updated to `/api/v1/...`.
+- **Redis-backed rate-limit store + `skipOnError`** (#167) — `@fastify/rate-limit`'s `redis` option plumbed through `BuildAppOptions`. Production wires a dedicated ioredis instance (separate from the security-events publisher); the count survives both restarts and replica scaling. `skipOnError: true` means a Redis flap degrades to "no rate limit applied" rather than 500-ing every request — safer than fail-closed for the user-facing surface.
+
+#### Security events follow-ups
+
+- **`auth.logout` + refresh-token revocation list** (#168) — closes the T-506 gap the frontend's `useAuthStore.logout()` left open. `POST /api/v1/auth/logout` verifies the refresh token, adds it to a `RefreshTokenRevocationList`, emits an `auth.logout` security event, and returns 204. Idempotent (re-logging-out the same token still 204s). `POST /api/v1/auth/refresh` now consults the revocation list AFTER cryptographic verify; a revoked token returns 401 with `reason: revoked`. Frontend `useAuthStore.logoutAndNotifyServer()` calls the endpoint before clearing localStorage; network failure swallows so local logout always proceeds.
+
+#### Operator dashboard
+
+- **Incident-detail page renders current envelope** (#169) — `IncidentApi.get(id)` issues `GET /api/v1/incidents/:id` (same bearer + 401-retry-once posture as the POST methods via a shared `send` helper). New `useIncidentDetail` composable fetches on mount, refetches on id change, and seeds `useIncidentsStore`. New `IncidentDetailHeader.vue` renders status / severity / assignee / acknowledged-at as a `dl` block next to the title. The detail page (`pages/incidents/[id].vue`) now draws from BOTH services — envelope from incident-service, lineage from audit-service.
+
+### Fixed
+
+- **incident-service `main.ts` never constructed `RedisIncidentEventPublisher`** (PR #165 mid-PR fix) — transitions landed in the DB but never reached the audit chain or notification fanout. Production gap surfaced when scenario-07's capstone test polled the audit chain and never reached 4 rows. `main.ts` now constructs a Redis client + the publisher and passes it to `buildApp`; compose gains `REDIS_HOST` + `depends_on: redis` on incident-service.
+
 ## [0.5.0] — 2026-05-31
 
 **Phase 5 — Production-shape hardening.** Every backend service now logs through a single correlated pino instance, exposes the same RED metrics under one prefix, wraps every downstream call in a per-dependency CircuitBreaker, gates every protected route through a shared JWT-verify + per-route `requireRole` keyed off the platform's RBAC matrix, accepts payloads under one body-limit cap and answers 4xx/5xx with one sanitized envelope, throttles via `@fastify/rate-limit`, and emits a security audit event on every login/refresh/access-deny/rate-limit-block that audit-service hash-chains alongside incident transitions. The frontend wires login + token refresh + UI gates against the same policy matrix, the e2e tier gains a sibling job that runs Playwright against the real dockerized stack, and a recurring CI flake gets nailed.
