@@ -26,7 +26,7 @@ useHead(() => ({
           <span class="ml-2 font-mono text-sm text-aip-muted">{{ incidentId }}</span>
         </h1>
         <p class="text-sm text-aip-muted">
-          Lifecycle replay sourced from the audit-service hash chain.
+          Current envelope from incident-service + lifecycle replay from the audit hash chain.
         </p>
       </div>
       <NuxtLink
@@ -36,6 +36,7 @@ useHead(() => ({
         ← All airports
       </NuxtLink>
     </header>
+    <IncidentDetailHeader :incident-id="incidentId" />
     <IncidentTimeline :incident-id="incidentId" />
   </div>
 </template>
