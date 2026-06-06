@@ -85,4 +85,4 @@ Trigger scenario 6 (weather-degraded). Proven by [`06-weather-degraded.spec.ts`]
 
 ## If a live beat misfires
 
-The three CI-proven beats (1, 4, 6) are the safe spine — lead with those. If the stack hiccups mid-demo: the [troubleshooting runbook](runbooks/troubleshooting.md) is your fast path, and the architecture/engineering talking points carry the story without a live screen. A polished rescue pack (canned screenshots, recorded clip) is the finishing touch tracked under demo-polish (T-515).
+The three CI-proven beats (1, 4, 6) are the safe spine — lead with those. The full contingency layer — pre-flight checklist, per-beat fallbacks, a total-failure plan, and canned talking points that work without a live screen — is the **[demo rescue pack](DEMO_RESCUE.md)**. Rehearse with it once; the [troubleshooting runbook](runbooks/troubleshooting.md) is the fast path for a mid-demo hiccup.
