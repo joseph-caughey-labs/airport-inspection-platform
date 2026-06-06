@@ -39,8 +39,10 @@ jobs:
 
       - name: Install Trivy
         run: |
+          # `sudo` because the installer writes the binary into
+          # /usr/local/bin, which the runner user can't write unaided.
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
+            | sudo sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
           trivy --version
 
       # GATE: known-vulnerable dependencies with an available fix.
@@ -93,8 +95,10 @@ jobs:
 
       - name: Install Trivy
         run: |
+          # `sudo` because the installer writes the binary into
+          # /usr/local/bin, which the runner user can't write unaided.
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
+            | sudo sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
           trivy --version
 
       # GATE: scan every image the compose stack runs (built services +
