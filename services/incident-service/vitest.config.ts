@@ -14,6 +14,10 @@ export default defineConfig({
       // REST API tests (T-402). Same idea — sit under __TEST__/api so
       // the rest of the platform's API surface tests live in one place.
       resolve(here, "../../__TEST__/api/rest/incidents/**/*.test.ts"),
+      // T-514 cross-service RBAC enforcement matrix. incident-service
+      // is the representative downstream surface for the policy every
+      // service shares.
+      resolve(here, "../../__TEST__/security/incident-service/**/*.test.ts"),
     ],
     globals: false,
     coverage: {

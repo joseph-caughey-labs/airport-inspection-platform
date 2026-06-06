@@ -2,3 +2,6 @@ packages:
   - "apps/*"
   - "services/*"
   - "packages/*"
+  # On-demand load + resilience suite (T-513). Isolated from the per-PR
+  # test fan-out — runs only via `pnpm test:load` against a live stack.
+  - "__TEST__/load"

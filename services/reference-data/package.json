@@ -22,7 +22,7 @@
     "@aip/metrics": "workspace:*",
     "@aip/postgres-client": "workspace:*",
     "@aip/shared-contracts": "workspace:*",
-    "drizzle-orm": "^0.36.1",
+    "drizzle-orm": "^0.45.2",
     "fastify": "^5.0.0",
     "pg": "^8.13.0"
   },

@@ -1,0 +1,133 @@
+name: Security Scan
+
+# T-508 — Trivy vulnerability + misconfiguration scanning.
+#
+# Two gates, both fail on actionable HIGH/CRITICAL findings:
+#   - dependency-scan: filesystem scan of lockfiles (pnpm + Python) and
+#     Dockerfile misconfigs. No Docker build — deterministic + fast.
+#   - image-scan: builds every service image (reusing the e2e-integration
+#     GHA layer cache so it's warm) and scans each built image's OS +
+#     installed packages.
+#
+# `--ignore-unfixed` keeps the gate ACTIONABLE: it fails only on
+# vulnerabilities that have a fix available (a base-image bump or a
+# dependency upgrade), not on un-patchable upstream CVEs that would
+# otherwise wedge every PR with no recourse.
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+concurrency:
+  group: security-scan-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TRIVY_SEVERITY: HIGH,CRITICAL
+
+jobs:
+  dependency-scan:
+    name: Trivy — dependencies + Dockerfiles (T-508)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Trivy
+        run: |
+          # Trivy's documented apt repo — version-robust, no release-asset
+          # naming or GitHub-API rate-limit dependency.
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+            | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+            | sudo tee /etc/apt/sources.list.d/trivy.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y trivy
+          trivy --version
+
+      # GATE: known-vulnerable dependencies with an available fix.
+      # Scans pnpm-lock.yaml + the Python requirements across the repo.
+      - name: Scan dependencies (lockfiles)
+        run: |
+          trivy fs \
+            --scanners vuln \
+            --severity "${TRIVY_SEVERITY}" \
+            --ignore-unfixed \
+            --exit-code 1 \
+            --no-progress \
+            .
+
+      # INFORMATIONAL: Dockerfile / compose misconfigurations. Surfaced
+      # in the log but does NOT gate (exit-code 0) — misconfig findings
+      # are advisory hardening, not merge blockers.
+      - name: Scan Dockerfiles (misconfig, advisory)
+        run: |
+          trivy config \
+            --severity "${TRIVY_SEVERITY}" \
+            --exit-code 0 \
+            .
+
+  # ADVISORY (non-gating): builds + scans the container images and
+  # surfaces image-layer findings on every PR. It does NOT block merge,
+  # because most image-layer CVEs live in upstream base images
+  # (node:20-alpine, python:3.12-slim, nginx, postgres, redis) — a
+  # newly-disclosed base-image CVE shouldn't wedge an unrelated PR. The
+  # ENFORCING gate is `dependency-scan`, which covers the dependencies
+  # we actually control. Base-image bumps are handled on their own
+  # cadence in response to what this job reports.
+  image-scan:
+    name: Trivy — container images, advisory (T-508)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # `docker compose build` tags images with compose's own naming, so
+      # the scan loop below (which enumerates via `compose config
+      # --images`) finds every built image locally — no name drift, no
+      # accidental registry pulls.
+      - name: Build images
+        run: docker compose build
+
+      - name: Install Trivy
+        run: |
+          # Trivy's documented apt repo — version-robust, no release-asset
+          # naming or GitHub-API rate-limit dependency.
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+            | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+            | sudo tee /etc/apt/sources.list.d/trivy.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y trivy
+          trivy --version
+
+      - name: Scan all stack images (advisory)
+        run: |
+          set -uo pipefail
+          images=$(docker compose config --images | sort -u)
+          echo "Images to scan:"; echo "$images"
+          findings=0
+          for img in $images; do
+            echo "::group::trivy image $img"
+            # exit-code 1 only flags whether THIS image had findings; we
+            # collect them as warnings and never fail the job.
+            if ! trivy image \
+              --severity "${TRIVY_SEVERITY}" \
+              --ignore-unfixed \
+              --exit-code 1 \
+              --no-progress \
+              "$img"; then
+              echo "::warning::fixable HIGH/CRITICAL found in $img — consider a base-image bump"
+              findings=$((findings + 1))
+            fi
+            echo "::endgroup::"
+          done
+          echo "Images with fixable HIGH/CRITICAL findings: ${findings} (advisory — not gating)"

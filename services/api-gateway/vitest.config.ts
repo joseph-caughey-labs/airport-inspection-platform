@@ -6,7 +6,11 @@ const here = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
   test: {
-    include: [resolve(here, "../../__TEST__/services/api-gateway/**/*.test.ts")],
+    include: [
+      resolve(here, "../../__TEST__/services/api-gateway/**/*.test.ts"),
+      // T-514 security regression suite for the gateway surface.
+      resolve(here, "../../__TEST__/security/api-gateway/**/*.test.ts"),
+    ],
     globals: false,
     coverage: {
       provider: "v8",
