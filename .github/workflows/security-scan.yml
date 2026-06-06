@@ -73,30 +73,28 @@ jobs:
             --no-progress \
             .
 
+  # ADVISORY (non-gating): builds + scans the container images and
+  # surfaces image-layer findings on every PR. It does NOT block merge,
+  # because most image-layer CVEs live in upstream base images
+  # (node:20-alpine, python:3.12-slim, nginx, postgres, redis) — a
+  # newly-disclosed base-image CVE shouldn't wedge an unrelated PR. The
+  # ENFORCING gate is `dependency-scan`, which covers the dependencies
+  # we actually control. Base-image bumps are handled on their own
+  # cadence in response to what this job reports.
   image-scan:
-    name: Trivy — container images (T-508)
+    name: Trivy — container images, advisory (T-508)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: read
-      # GHA cache backend (`type=gha`) needs write to warm the cache.
-      actions: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker buildx
-        uses: docker/setup-buildx-action@v3
-
-      # Reuse the same `scope=integration` layer cache the e2e
-      # integration workflow warms, so this rarely pays a cold build.
-      - name: Build images (with GHA cache)
-        uses: docker/bake-action@v5
-        with:
-          files: docker-compose.yml
-          load: true
-          set: |
-            *.cache-from=type=gha,scope=integration
+      # `docker compose build` tags images with compose's own naming, so
+      # the scan loop below (which enumerates via `compose config
+      # --images`) finds every built image locally — no name drift, no
+      # accidental registry pulls.
+      - name: Build images
+        run: docker compose build
 
       - name: Install Trivy
         run: |
@@ -112,26 +110,25 @@ jobs:
           sudo apt-get install -y trivy
           trivy --version
 
-      # GATE: scan every image the compose stack runs (built services +
-      # the postgres/redis base images). `compose config --images` lists
-      # exactly the tags bake just loaded, so names always match.
-      - name: Scan all stack images
+      - name: Scan all stack images (advisory)
         run: |
           set -uo pipefail
           images=$(docker compose config --images | sort -u)
           echo "Images to scan:"; echo "$images"
-          failed=0
+          findings=0
           for img in $images; do
             echo "::group::trivy image $img"
+            # exit-code 1 only flags whether THIS image had findings; we
+            # collect them as warnings and never fail the job.
             if ! trivy image \
               --severity "${TRIVY_SEVERITY}" \
               --ignore-unfixed \
               --exit-code 1 \
               --no-progress \
               "$img"; then
-              echo "::error::HIGH/CRITICAL fixable vulnerabilities in $img"
-              failed=1
+              echo "::warning::fixable HIGH/CRITICAL found in $img — consider a base-image bump"
+              findings=$((findings + 1))
             fi
             echo "::endgroup::"
           done
-          exit $failed
+          echo "Images with fixable HIGH/CRITICAL findings: ${findings} (advisory — not gating)"
