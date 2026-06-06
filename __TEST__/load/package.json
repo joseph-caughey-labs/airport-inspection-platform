@@ -1,6 +1,6 @@
 {
   "name": "@aip/load-tests",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Load + resilience test suite (T-513). On-demand scenarios driven against the live docker-compose stack — NOT part of per-PR CI.",
   "license": "SEE LICENSE IN ../../LICENSE",
