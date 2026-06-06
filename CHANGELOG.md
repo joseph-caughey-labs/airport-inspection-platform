@@ -2,6 +2,35 @@
 
 All notable changes land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] — 2026-06-06
+
+**Demo-ready — the production-engineering layer is complete.** The working stack landed across Phases 1–6; this release adds what turns a code exercise into a portfolio piece you can put in front of an interview panel: the tests, documentation, and CI gates that prove the system was designed past the happy path. The security and load suites assert (rather than claim) that auth holds and the stack recovers; the failure-mode matrix and runbooks make every failure detectable and operable; the ADR set is complete; and the flagship docs tie every claim to the artifact that backs it. The Phase 5 definition of done — observability, auth/RBAC, full CI + security scan, complete docs, and load + security tests — is met.
+
+### Added
+
+#### Tests — security + resilience (`__TEST__/security`, `__TEST__/load`)
+
+- **Security regression suite** (#174, **T-514**) — `__TEST__/security/`, wired into the existing per-service vitest runners. Gateway input-safety (Authorization-header bypass matrix, token forgery incl. the self-minted-admin escalation, kind confusion, SQLi/XSS/JNDI/path-traversal input safety) and a cross-service RBAC enforcement matrix on incident-service (deny-by-default 401 sweep, the operator/reviewer privilege boundary on review-only routes, foreign-secret forged tokens rejected locally). Plus `docs/operations/threat-model.md` indexing the full threat → defense → test matrix.
+- **Load + resilience suite** (#175, **T-513**) — a new `@aip/load-tests` workspace package: seven scenarios driving the live compose stack and asserting SRE thresholds via `/metrics` (high-frequency ingestion, WS fanout, queue-backlog shedding, Redis outage, DB-latency freeze, AI-outage isolation, replay-after-restart). Faults injected at the container boundary; clean skip when the stack is down; isolated from per-PR CI (`pnpm test:load`).
+
+#### CI — security scanning (`.github/workflows/security-scan.yml`)
+
+- **Trivy dependency + image scanning** (#180, **T-508**) — a `dependency-scan` hard gate (`trivy fs` over the pnpm + Python lockfiles, fails on fixable HIGH/CRITICAL) plus an advisory image scan over every built image. The gate immediately caught and this release fixes two real CVEs: **CVE-2026-33805** (`@fastify/http-proxy` → 11.x) and **CVE-2026-39356** (`drizzle-orm` → 0.45.x).
+
+#### Documentation — the demo-readiness set
+
+- **Failure-mode matrix** (#176, **T-509**) — `docs/FAILURE_MODE_MATRIX.md`: all 11 failure modes with detection, recovery, operator UX, metrics, retryability, and manual-intervention, each traced to code, with honest gaps marked as production evolution.
+- **Operations runbooks** (#177, **T-510**) — `docs/runbooks/`: decision-tree startup, recovery, replay, escalation, and troubleshooting procedures grounded in real commands.
+- **ADRs finalized** (#172, #178, **T-511**) — the remaining drafts written and pinned: 0004 (AI inference simulation), 0006 (event ordering & dedup), 0007 (edge/cloud separation), 0009 (HITL routing thresholds), alongside the earlier 0012/0013. The `docs/adr/` set is complete.
+- **Flagship interview docs** (#179, **T-512**) — `README` polished to the real running-stack quickstart + architecture, `README_INTERVIEW.md` (claim → proof), `docs/DEMO_WALKTHROUGH.md` (timed script), and `docs/PR_REVIEW_GUIDE.md` (guided code tour).
+- **Demo rescue pack** (#181, **T-515**) — `docs/DEMO_RESCUE.md`: pre-flight checklist, per-beat fallbacks, a total-failure plan, and canned talking points (the "rescue plan documented" criterion).
+- **Auth operations guide** (#173) — `docs/operations/auth.md`.
+
+### Fixed
+
+- **`@fastify/http-proxy` 10 → 11.x** (#180) — CVE-2026-33805 (CRITICAL) proxy security bypass; the api-gateway audit/incident proxy routes verified against the dockerized e2e tier.
+- **`drizzle-orm` 0.36 → 0.45.x** (#180) — CVE-2026-39356 (HIGH) SQL injection via improperly escaped identifiers; db-schema + reference-data suites green on the bump.
+
 ## [0.6.0] — 2026-06-04
 
 **Phase 6 — Real-stack coverage + public-surface consolidation.** The mocked Playwright tier proved frontend behaviour; this phase builds the parallel tier that proves wire behaviour against the live `docker-compose` stack. The same scenarios (sensor outage, weather-degraded LOW CONF, FOD-on-runway full operator workflow) now run twice — fast against `routeWebSocket`, slow against compose — and the slow tier surfaced two real production wiring gaps in incident-service that the fast tier could never have caught. The public REST surface consolidated behind api-gateway proper (no more nginx-direct shortcuts), the rate-limit store moved from in-process to Redis with `skipOnError` graceful degradation, `auth.logout` joined the security-event taxonomy with a refresh-token revocation list backing it, and the incident-detail page finally renders the current envelope alongside the audit-driven timeline.

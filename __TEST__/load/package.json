@@ -1,0 +1,26 @@
+{
+  "name": "@aip/load-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Load + resilience test suite (T-513). On-demand scenarios driven against the live docker-compose stack — NOT part of per-PR CI.",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint src scenarios",
+    "typecheck": "tsc --noEmit",
+    "test:load": "vitest run",
+    "test:load:watch": "vitest"
+  },
+  "dependencies": {
+    "@aip/auth-jwt": "workspace:*",
+    "@aip/shared-contracts": "workspace:*",
+    "ioredis": "^5.4.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/ws": "^8.5.12",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2"
+  }
+}

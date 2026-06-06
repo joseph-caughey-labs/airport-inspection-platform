@@ -30,19 +30,21 @@ Sequential. Never reuse a number, even for superseded ADRs. Status field handles
 
 ## Index
 
-| #                                          | Title                                                 | Status              | Owner               |
-| ------------------------------------------ | ----------------------------------------------------- | ------------------- | ------------------- |
-| [0001](0001-redis-pubsub-vs-kafka.md)      | Redis pub/sub for demo event transport                | Accepted            | Principal Architect |
-| [0002](0002-websockets-for-realtime.md)    | WebSockets for real-time operator updates             | Accepted            | Principal Architect |
-| [0003](0003-service-boundary-rationale.md) | Service boundary rationale (10 services + 1 frontend) | Accepted            | Principal Architect |
-| 0004                                       | AI inference simulation strategy                      | _Draft (T-301)_     | AI/ML Engineer      |
-| [0005](0005-idempotency-and-retries.md)    | Idempotency, retries, and circuit breakers            | Accepted            | SRE                 |
-| 0006                                       | Event ordering and deduplication                      | _Draft (T-206)_     | Backend             |
-| 0007                                       | Edge / cloud separation                               | _Pending (Phase 5)_ | Principal Architect |
-| [0008](0008-parity-10-layer-validation.md) | Parity 10-layer validation pipeline                   | Accepted            | Validation Engineer |
-| 0009                                       | HITL routing thresholds                               | _Draft (T-409)_     | Validation Engineer |
-| [0010](0010-audit-immutability.md)         | Audit immutability                                    | Accepted            | Database            |
-| [0011](0011-input-validation-and-auth.md)  | Input validation, JWT auth, and RBAC                  | Accepted            | Security            |
-| 0012                                       | Branching and release strategy                        | _Pending_           | Project Manager     |
+| #                                             | Title                                                 | Status    | Owner               |
+| --------------------------------------------- | ----------------------------------------------------- | --------- | ------------------- |
+| [0001](0001-redis-pubsub-vs-kafka.md)         | Redis pub/sub for demo event transport                | Accepted  | Principal Architect |
+| [0002](0002-websockets-for-realtime.md)       | WebSockets for real-time operator updates             | Accepted  | Principal Architect |
+| [0003](0003-service-boundary-rationale.md)    | Service boundary rationale (10 services + 1 frontend) | Accepted  | Principal Architect |
+| [0004](0004-ai-inference-simulation.md)       | AI inference simulation strategy                      | Accepted  | AI/ML Engineer      |
+| [0005](0005-idempotency-and-retries.md)       | Idempotency, retries, and circuit breakers            | Accepted  | SRE                 |
+| [0006](0006-event-ordering-and-dedup.md)      | Event ordering and deduplication                      | Accepted  | Backend             |
+| [0007](0007-edge-cloud-separation.md)         | Edge / cloud separation                               | Accepted  | Principal Architect |
+| [0008](0008-parity-10-layer-validation.md)    | Parity 10-layer validation pipeline                   | Accepted  | Validation Engineer |
+| [0009](0009-hitl-routing-thresholds.md)       | HITL routing thresholds                               | Accepted  | Validation Engineer |
+| [0010](0010-audit-immutability.md)            | Audit immutability                                    | Accepted  | Database            |
+| [0011](0011-input-validation-and-auth.md)     | Input validation, JWT auth, and RBAC                  | Accepted  | Security            |
+| [0012](0012-api-gateway-as-public-surface.md) | api-gateway as the single public surface              | Accepted  | Platform Architect  |
+| [0013](0013-refresh-token-revocation.md)      | Refresh-token revocation via an out-of-band list      | Accepted  | Security Engineer   |
+| 0014                                          | Branching and release strategy                        | _Pending_ | Project Manager     |
 
 Status values: **Proposed**, **Accepted**, **Superseded by ADR-NNNN**, **Deprecated**.

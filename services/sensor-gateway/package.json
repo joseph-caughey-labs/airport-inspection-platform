@@ -1,6 +1,6 @@
 {
   "name": "@aip/sensor-gateway",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Sensor telemetry ingestion service. This PR adds the shell; real simulators (camera, LiDAR, GPS, IMU, weather, perimeter) and fault injection land in Phase 2.",
   "license": "SEE LICENSE IN ../../LICENSE",

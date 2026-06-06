@@ -1,6 +1,6 @@
 {
   "name": "airport-inspection-platform",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Airport Inspection Platform — production-style portfolio demo of an AI-assisted airport inspection system (sensor ingestion, AI inference, 10-layer validation, ops dashboard).",
   "license": "SEE LICENSE IN LICENSE",
@@ -20,6 +20,7 @@
     "test:integration": "turbo run test:integration",
     "test:e2e": "turbo run test:e2e",
     "test:coverage": "turbo run test:coverage",
+    "test:load": "turbo run test:load",
     "db:migrate": "pnpm --filter @aip/db-schema db:migrate",
     "db:seed": "pnpm --filter @aip/db-schema db:seed",
     "format": "prettier --write \"**/*.{ts,tsx,vue,js,mjs,cjs,json,md,yaml,yml}\"",

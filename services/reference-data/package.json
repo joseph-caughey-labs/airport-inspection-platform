@@ -1,6 +1,6 @@
 {
   "name": "@aip/reference-data",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Source-of-truth registry: airports, runways, sensors, SOP baseline. Read-only REST API consumed by the validation engine (Layer 4) and the operator dashboard.",
   "license": "SEE LICENSE IN ../../LICENSE",
@@ -22,7 +22,7 @@
     "@aip/metrics": "workspace:*",
     "@aip/postgres-client": "workspace:*",
     "@aip/shared-contracts": "workspace:*",
-    "drizzle-orm": "^0.36.1",
+    "drizzle-orm": "^0.45.2",
     "fastify": "^5.0.0",
     "pg": "^8.13.0"
   },

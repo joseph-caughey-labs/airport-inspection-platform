@@ -1,6 +1,6 @@
 {
   "name": "@aip/auth-jwt",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "private": true,
   "description": "JWT issue + verify primitives + RBAC helpers. `jose` under the hood, with a Fastify hook for verifyJwt and a requireRole hook for per-route enforcement.",
   "license": "SEE LICENSE IN ../../LICENSE",
