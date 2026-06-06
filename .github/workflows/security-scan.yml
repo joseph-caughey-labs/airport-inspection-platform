@@ -70,7 +70,6 @@ jobs:
           trivy config \
             --severity "${TRIVY_SEVERITY}" \
             --exit-code 0 \
-            --no-progress \
             .
 
   # ADVISORY (non-gating): builds + scans the container images and
