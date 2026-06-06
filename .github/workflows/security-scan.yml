@@ -39,10 +39,12 @@ jobs:
 
       - name: Install Trivy
         run: |
-          # `sudo` because the installer writes the binary into
-          # /usr/local/bin, which the runner user can't write unaided.
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sudo sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
+          # Download the release tarball directly (no install.sh → no
+          # GitHub API resolve, which rate-limits on shared runners).
+          curl -sfL \
+            "https://github.com/aquasecurity/trivy/releases/download/${TRIVY_VERSION}/trivy_${TRIVY_VERSION#v}_Linux-64bit.tar.gz" \
+            -o /tmp/trivy.tar.gz
+          sudo tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
           trivy --version
 
       # GATE: known-vulnerable dependencies with an available fix.
@@ -95,10 +97,12 @@ jobs:
 
       - name: Install Trivy
         run: |
-          # `sudo` because the installer writes the binary into
-          # /usr/local/bin, which the runner user can't write unaided.
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sudo sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
+          # Download the release tarball directly (no install.sh → no
+          # GitHub API resolve, which rate-limits on shared runners).
+          curl -sfL \
+            "https://github.com/aquasecurity/trivy/releases/download/${TRIVY_VERSION}/trivy_${TRIVY_VERSION#v}_Linux-64bit.tar.gz" \
+            -o /tmp/trivy.tar.gz
+          sudo tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
           trivy --version
 
       # GATE: scan every image the compose stack runs (built services +
